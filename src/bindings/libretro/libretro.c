@@ -54,8 +54,8 @@ static hid_keyboard_t *vm_keyboard;
 static hid_mouse_t *vm_mouse;
 #define NVME_MAX 4
 static struct {
-    size_t smp;
-    size_t mem;
+    uint64_t smp;
+    uint64_t mem;
     bool rv64;
     char bootrom[PATH_MAX];
     char kernel[PATH_MAX];
@@ -343,7 +343,7 @@ bool retro_load_game(const struct retro_game_info *game)
 
     int nvme_idx = 0;
     char *line = NULL;
-    size_t linesize = 0;
+    uint64_t linesize = 0;
     ssize_t linelen;
     while ((linelen = getline(&line, &linesize, fp)) != -1) {
         if (rvvm_strcmp(line, "rv64\n")) {
@@ -376,19 +376,19 @@ bool retro_load_game(const struct retro_game_info *game)
             continue;
         }
         if (rvvm_strcmp(k, "bootrom")) {
-            size_t len = sizeof(machine_opts.bootrom);
+            uint64_t len = sizeof(machine_opts.bootrom);
             memset(machine_opts.bootrom, 0, len);
             memcpy(machine_opts.bootrom, v, strnlen(v, len-1));
             continue;
         }
         if (rvvm_strcmp(k, "kernel")) {
-            size_t len = sizeof(machine_opts.kernel);
+            uint64_t len = sizeof(machine_opts.kernel);
             memset(machine_opts.kernel, 0, len);
             memcpy(machine_opts.kernel, v, strnlen(v, len-1));
             continue;
         }
         if (rvvm_strcmp(k, "nvme")) {
-            size_t len = sizeof(machine_opts.nvme[0]);
+            uint64_t len = sizeof(machine_opts.nvme[0]);
             if (nvme_idx == NVME_MAX) {
                 log_cb(RETRO_LOG_ERROR, "Failed to mount %s as nvme, only %d devices are allowed\n", v, NVME_MAX);
                 continue;
@@ -399,7 +399,7 @@ bool retro_load_game(const struct retro_game_info *game)
             continue;
         }
         if (rvvm_strcmp(k, "cmdline")) {
-            size_t len = sizeof(machine_opts.cmdline);
+            uint64_t len = sizeof(machine_opts.cmdline);
             memset(machine_opts.cmdline, 0, len);
             memcpy(machine_opts.cmdline, v, strnlen(v, len-1));
             continue;
@@ -480,19 +480,19 @@ void retro_run(void)
     video_cb(vm_fb.buffer, vm_fb.width, vm_fb.height, vm_fb.width * 4);
 }
 
-size_t retro_serialize_size(void)
+uint64_t retro_serialize_size(void)
 {
     return 0;
 }
 
-bool retro_serialize(void *data, size_t size)
+bool retro_serialize(void *data, uint64_t size)
 {
     UNUSED(data);
     UNUSED(size);
     return false;
 }
 
-bool retro_unserialize(const void *data, size_t size)
+bool retro_unserialize(const void *data, uint64_t size)
 {
     UNUSED(data);
     UNUSED(size);
@@ -507,7 +507,7 @@ void retro_cheat_set(unsigned index, bool enabled, const char *code)
     UNUSED(code);
 }
 
-bool retro_load_game_special(unsigned game_type, const struct retro_game_info *info, size_t num_info)
+bool retro_load_game_special(unsigned game_type, const struct retro_game_info *info, uint64_t num_info)
 {
     UNUSED(game_type);
     UNUSED(info);
@@ -533,7 +533,7 @@ void *retro_get_memory_data(unsigned id)
     return 0;
 }
 
-size_t retro_get_memory_size(unsigned id)
+uint64_t retro_get_memory_size(unsigned id)
 {
     UNUSED(id);
     return 0;

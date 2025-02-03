@@ -19,7 +19,7 @@ typedef struct {
     // Network card specific context
     void* net_dev;
     // Feed received Ethernet frame to the NIC (Without CRC)
-    bool (*feed_rx)(void* net_dev, const void* data, size_t size);
+    bool (*feed_rx)(void* net_dev, const void* data, uint64_t size);
 } tap_net_dev_t;
 
 typedef struct tap_dev tap_dev_t;
@@ -31,7 +31,7 @@ PUBLIC tap_dev_t* tap_open(void);
 PUBLIC void tap_attach(tap_dev_t* tap, const tap_net_dev_t* net_dev);
 
 // Send Ethernet frame (Without CRC)
-PUBLIC bool tap_send(tap_dev_t* tap, const void* data, size_t size);
+PUBLIC bool tap_send(tap_dev_t* tap, const void* data, uint64_t size);
 
 // Set/get interface MAC address
 PUBLIC bool tap_get_mac(tap_dev_t* tap, uint8_t mac[6]);

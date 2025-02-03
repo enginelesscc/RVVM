@@ -40,9 +40,9 @@ static inline uint32_t digit_value(char digit)
     return -1;
 }
 
-size_t uint_to_str_base(char* str, size_t size, uint64_t val, uint8_t base)
+uint64_t uint_to_str_base(char* str, uint64_t size, uint64_t val, uint8_t base)
 {
-    size_t len = 0;
+    uint64_t len = 0;
     if (base >= 2 && base <= 36) do {
         if (len + 1 >= size) {
             len = 0;
@@ -52,7 +52,7 @@ size_t uint_to_str_base(char* str, size_t size, uint64_t val, uint8_t base)
         val /= base;
     } while (val);
     // Reverse the string
-    for (size_t i=0; i<len / 2; ++i) {
+    for (uint64_t i=0; i<len / 2; ++i) {
         char tmp = str[i];
         str[i] = str[len - i - 1];
         str[len - i - 1] = tmp;
@@ -61,10 +61,10 @@ size_t uint_to_str_base(char* str, size_t size, uint64_t val, uint8_t base)
     return len;
 }
 
-uint64_t str_to_uint_base(const char* str, size_t* len, uint8_t base)
+uint64_t str_to_uint_base(const char* str, uint64_t* len, uint8_t base)
 {
     uint64_t val = 0;
-    size_t size = 0;
+    uint64_t size = 0;
     if (base == 0) {
         base = 10;
         if (str[0] == '0') {
@@ -89,10 +89,10 @@ uint64_t str_to_uint_base(const char* str, size_t* len, uint8_t base)
     return val;
 }
 
-size_t int_to_str_base(char* str, size_t size, int64_t val, uint8_t base)
+uint64_t int_to_str_base(char* str, uint64_t size, int64_t val, uint8_t base)
 {
-    size_t off = (val < 0 && size) ? 1 : 0;
-    size_t len = uint_to_str_base(str + off, size - off, off ? -val : val, base);
+    uint64_t off = (val < 0 && size) ? 1 : 0;
+    uint64_t len = uint_to_str_base(str + off, size - off, off ? -val : val, base);
     if (!len) {
         if (size) str[0] = 0;
     } else if (off) {
@@ -102,7 +102,7 @@ size_t int_to_str_base(char* str, size_t size, int64_t val, uint8_t base)
     return len;
 }
 
-int64_t str_to_int_base(const char* str, size_t* len, uint8_t base)
+int64_t str_to_int_base(const char* str, uint64_t* len, uint8_t base)
 {
     bool neg = (str[0] == '-');
     uint64_t val = str_to_uint_base(str + neg, len, base);
@@ -110,7 +110,7 @@ int64_t str_to_int_base(const char* str, size_t* len, uint8_t base)
     return neg ? -val : val;
 }
 
-size_t int_to_str_dec(char* str, size_t size, int64_t val)
+uint64_t int_to_str_dec(char* str, uint64_t size, int64_t val)
 {
     return int_to_str_base(str, size, val, 10);
 }
@@ -124,30 +124,30 @@ int64_t str_to_int_dec(const char* str)
  * String functions
  */
 
-size_t rvvm_strlen(const char* string)
+uint64_t rvvm_strlen(const char* string)
 {
-    size_t i = 0;
+    uint64_t i = 0;
     while (string[i]) i++;
     return i;
 }
 
-size_t rvvm_strnlen(const char* string, size_t size)
+uint64_t rvvm_strnlen(const char* string, uint64_t size)
 {
-    size_t i = 0;
+    uint64_t i = 0;
     while (i < size && string[i]) i++;
     return i;
 }
 
 bool rvvm_strcmp(const char* s1, const char* s2)
 {
-    size_t i = 0;
+    uint64_t i = 0;
     while (s1[i] && s1[i] == s2[i]) i++;
     return s1[i] == s2[i];
 }
 
-size_t rvvm_strlcpy(char* dst, const char* src, size_t size)
+uint64_t rvvm_strlcpy(char* dst, const char* src, uint64_t size)
 {
-    size_t i = 0;
+    uint64_t i = 0;
     while (i + 1 < size && src[i]) {
         dst[i] = src[i];
         i++;
@@ -175,15 +175,15 @@ const char* rvvm_strfind(const char* string, const char* pattern)
  * Random generation
  */
 
-void rvvm_randombytes(void* buffer, size_t size)
+void rvvm_randombytes(void* buffer, uint64_t size)
 {
     // Xorshift RNG seeded by precise timer
     static uint64_t seed = 0;
     uint8_t* bytes = buffer;
-    size_t size_rem = size & 0x7;
+    uint64_t size_rem = size & 0x7;
     size -= size_rem;
     seed += rvtimer_clocksource(1000000000ULL);
-    for (size_t i=0; i<size; i += 8) {
+    for (uint64_t i=0; i<size; i += 8) {
         seed ^= (seed >> 17);
         seed ^= (seed << 21);
         seed ^= (seed << 28);
@@ -197,11 +197,11 @@ void rvvm_randombytes(void* buffer, size_t size)
     memcpy(bytes + size, &seed, size_rem);
 }
 
-void rvvm_randomserial(char* serial, size_t size)
+void rvvm_randomserial(char* serial, uint64_t size)
 {
     rvvm_randombytes(serial, size);
-    for (size_t i=0; i<size; ++i) {
-        size_t c = ((uint8_t*)serial)[i] % ('Z' - 'A' + 10);
+    for (uint64_t i=0; i<size; ++i) {
+        uint64_t c = ((uint8_t*)serial)[i] % ('Z' - 'A' + 10);
         if (c <= 9) serial[i] = '0' + c;
         else serial[i] = 'A' + c - 10;
     }
@@ -211,7 +211,7 @@ void rvvm_randomserial(char* serial, size_t size)
  * Safe memory allocation
  */
 
-SAFE_MALLOC void* safe_malloc(size_t size)
+SAFE_MALLOC void* safe_malloc(uint64_t size)
 {
     void* ret = malloc(size);
     if (unlikely(!size)) rvvm_warn("Suspicious 0-byte allocation");
@@ -221,7 +221,7 @@ SAFE_MALLOC void* safe_malloc(size_t size)
     return ret;
 }
 
-SAFE_CALLOC void* safe_calloc(size_t size, size_t n)
+SAFE_CALLOC void* safe_calloc(uint64_t size, uint64_t n)
 {
     void* ret = calloc(size, n);
     if (unlikely(!size || !n)) rvvm_warn("Suspicious 0-byte allocation");
@@ -233,7 +233,7 @@ SAFE_CALLOC void* safe_calloc(size_t size, size_t n)
     return ret;
 }
 
-SAFE_REALLOC void* safe_realloc(void* ptr, size_t size)
+SAFE_REALLOC void* safe_realloc(void* ptr, uint64_t size)
 {
     void* ret = realloc(ptr, size);
     if (unlikely(!size)) rvvm_warn("Suspicious 0-byte allocation");
@@ -296,7 +296,7 @@ static int config_split(const char* str, char** argv)
             str++;
         }
         if (argv) {
-            size_t arg_size = str - arg_start;
+            uint64_t arg_size = str - arg_start;
             char* buffer = safe_new_arr(char, arg_size + (arg_prefix ? 2 : 1));
             if (arg_prefix) {
                 buffer[0] = '-';
@@ -316,7 +316,7 @@ bool rvvm_load_config(const char* path)
 {
     rvfile_t* cfg = rvopen(path, 0);
     if (cfg) {
-        size_t filesize = rvfilesize(cfg);
+        uint64_t filesize = rvfilesize(cfg);
         char* filebuf = safe_new_arr(char, filesize + 1);
         rvread(cfg, filebuf, filesize, 0);
         rvclose(cfg);
@@ -414,7 +414,7 @@ uint64_t rvvm_getarg_size(const char* arg)
 {
     const char* arg_val = rvvm_getarg(arg);
     if (arg_val) {
-        size_t len = 0;
+        uint64_t len = 0;
         uint64_t ret = str_to_int_base(arg_val, &len, 0);
         return ret << mem_suffix_shift(arg_val[len]);
     }
@@ -440,11 +440,11 @@ static bool log_has_colors(void)
 static void log_print(const char* prefix, const char* fmt, va_list args)
 {
     char buffer[256] = {0};
-    size_t pos = rvvm_strlcpy(buffer, prefix, sizeof(buffer));
-    size_t vsp_size = sizeof(buffer) - EVAL_MIN(pos + 6, sizeof(buffer));
+    uint64_t pos = rvvm_strlcpy(buffer, prefix, sizeof(buffer));
+    uint64_t vsp_size = sizeof(buffer) - EVAL_MIN(pos + 6, sizeof(buffer));
     if (vsp_size > 1) {
         int tmp = vsnprintf(buffer + pos, vsp_size, fmt, args);
-        if (tmp > 0) pos += EVAL_MIN(vsp_size - 1, (size_t)tmp);
+        if (tmp > 0) pos += EVAL_MIN(vsp_size - 1, (uint64_t)tmp);
     }
     rvvm_strlcpy(buffer + pos, log_has_colors() ? "\033[0m\n" : "\n", sizeof(buffer) - pos);
     fputs(buffer, stderr);
@@ -546,7 +546,7 @@ static deinit_func_t dequeue_func(void)
     if (vector_size(deinit_funcs) == 0) {
         vector_free(deinit_funcs);
     } else {
-        size_t end = vector_size(deinit_funcs) - 1;
+        uint64_t end = vector_size(deinit_funcs) - 1;
         ret = vector_at(deinit_funcs, end);
         vector_erase(deinit_funcs, end);
     }

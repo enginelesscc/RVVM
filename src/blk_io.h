@@ -48,8 +48,8 @@ uint64_t  rvfilesize(rvfile_t* file);
 
 // If offset == RVFILE_CURPOS, uses current file position as offset
 // Otherwise is equialent to pread/pwrite, and is thread-safe
-size_t    rvread(rvfile_t* file, void* dst, size_t size, uint64_t offset);
-size_t    rvwrite(rvfile_t* file, const void* src, size_t size, uint64_t offset);
+uint64_t    rvread(rvfile_t* file, void* dst, uint64_t size, uint64_t offset);
+uint64_t    rvwrite(rvfile_t* file, const void* src, uint64_t size, uint64_t offset);
 
 // Seek/tell for positioned IO
 bool      rvseek(rvfile_t* file, int64_t offset, uint8_t startpos);
@@ -89,8 +89,8 @@ void* rvfile_get_win32_handle(rvfile_t* file);
 typedef struct {
     const char* name;
     void     (*close)(void* dev);
-    size_t   (*read)(void* dev, void* dst, size_t count, uint64_t offset);
-    size_t   (*write)(void* dev, const void* src, size_t count, uint64_t offset);
+    uint64_t   (*read)(void* dev, void* dst, uint64_t count, uint64_t offset);
+    uint64_t   (*write)(void* dev, const void* src, uint64_t count, uint64_t offset);
     bool     (*trim)(void* dev, uint64_t offset, uint64_t count);
     bool     (*sync)(void* dev);
 } blkdev_type_t;
@@ -120,12 +120,12 @@ static inline uint64_t blk_getsize(blkdev_t* dev)
 }
 
 // Read data from block device
-static inline size_t blk_read(blkdev_t* dev, void* dst, size_t size, uint64_t offset)
+static inline uint64_t blk_read(blkdev_t* dev, void* dst, uint64_t size, uint64_t offset)
 {
     if (dev) {
         uint64_t real_pos = (offset == BLKDEV_CUR) ? dev->pos : offset;
         if (real_pos + size <= dev->size) {
-            size_t ret = dev->type->read(dev->data, dst, size, real_pos);
+            uint64_t ret = dev->type->read(dev->data, dst, size, real_pos);
             if (offset == BLKDEV_CUR) dev->pos += ret;
             return ret;
         }
@@ -134,12 +134,12 @@ static inline size_t blk_read(blkdev_t* dev, void* dst, size_t size, uint64_t of
 }
 
 // Write data to block device
-static inline size_t blk_write(blkdev_t* dev, const void* src, size_t size, uint64_t offset)
+static inline uint64_t blk_write(blkdev_t* dev, const void* src, uint64_t size, uint64_t offset)
 {
     if (dev) {
         uint64_t real_pos = (offset == BLKDEV_CUR) ? dev->pos : offset;
         if (real_pos + size <= dev->size) {
-            size_t ret = dev->type->write(dev->data, src, size, real_pos);
+            uint64_t ret = dev->type->write(dev->data, src, size, real_pos);
             if (offset == BLKDEV_CUR) dev->pos += ret;
             return ret;
         }

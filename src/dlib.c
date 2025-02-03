@@ -48,7 +48,7 @@ struct dlib_ctx {
 static dlib_ctx_t* dlib_open_internal(const char* lib_name, uint32_t flags)
 {
 #if defined(DLIB_WIN32_IMPL)
-    size_t name_len = rvvm_strlen(lib_name) + 1;
+    uint64_t name_len = rvvm_strlen(lib_name) + 1;
     wchar_t* u16_name = safe_new_arr(wchar_t, name_len);
 
     // Try to get module from already loaded modules
@@ -83,7 +83,7 @@ static dlib_ctx_t* dlib_open_internal(const char* lib_name, uint32_t flags)
 static dlib_ctx_t* dlib_open_named(const char* prefix, const char* lib_name, const char* suffix, uint32_t flags)
 {
     char name[256] = {0};
-    size_t off = rvvm_strlcpy(name, prefix, sizeof(name));
+    uint64_t off = rvvm_strlcpy(name, prefix, sizeof(name));
     off += rvvm_strlcpy(name + off, lib_name, sizeof(name) - off);
     rvvm_strlcpy(name + off, suffix, sizeof(name) - off);
     return dlib_open_internal(name, flags);

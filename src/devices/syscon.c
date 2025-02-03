@@ -14,7 +14,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #define SYSCON_POWEROFF 0x5555
 #define SYSCON_RESET    0x7777
 
-static bool syscon_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool syscon_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     UNUSED(size);
     if (offset == 0) {

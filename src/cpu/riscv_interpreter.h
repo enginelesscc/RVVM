@@ -73,14 +73,14 @@ TSAN_SUPPRESS void riscv_run_interpreter(rvvm_hart_t* vm)
     uint32_t insn = 0;
 
     // This is similar to TLB mechanism, but persists in local variables across instructions
-    size_t insn_ptr = 0;
+    uint64_t insn_ptr = 0;
     xlen_t insn_page = vm->registers[RISCV_REG_PC] + RISCV_PAGE_SIZE;
 
     do {
         const xlen_t insn_addr = vm->registers[RISCV_REG_PC];
         if (likely(insn_addr - insn_page <= 0xFFC)) {
             // Direct instruction fetch by pointer
-            insn = read_uint32_le_m((const void*)(size_t)(insn_ptr + insn_addr));
+            insn = read_uint32_le_m((const void*)(uint64_t)(insn_ptr + insn_addr));
         } else {
             uint32_t tmp = 0;
             if (likely(riscv_fetch_insn(vm, insn_addr, &tmp))) {

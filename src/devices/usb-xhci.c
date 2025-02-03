@@ -310,7 +310,7 @@ static void xhci_report_event(xhci_bus_t* xhci, const xhci_event_trb_t* event)
     }
 }
 
-static uint32_t xhci_port_reg_read(xhci_bus_t* xhci, size_t id, size_t offset)
+static uint32_t xhci_port_reg_read(xhci_bus_t* xhci, uint64_t id, uint64_t offset)
 {
     UNUSED(xhci);
     UNUSED(id);
@@ -326,7 +326,7 @@ static uint32_t xhci_port_reg_read(xhci_bus_t* xhci, size_t id, size_t offset)
     return 0;
 }
 
-static void xhci_port_reg_write(xhci_bus_t* xhci, size_t id, size_t offset, uint32_t val)
+static void xhci_port_reg_write(xhci_bus_t* xhci, uint64_t id, uint64_t offset, uint32_t val)
 {
     UNUSED(xhci);
     UNUSED(id);
@@ -334,7 +334,7 @@ static void xhci_port_reg_write(xhci_bus_t* xhci, size_t id, size_t offset, uint
     UNUSED(val);
 }
 
-static void xhci_doorbell_write(xhci_bus_t* xhci, size_t id, uint32_t val)
+static void xhci_doorbell_write(xhci_bus_t* xhci, uint64_t id, uint32_t val)
 {
     UNUSED(xhci);
     UNUSED(id);
@@ -388,7 +388,7 @@ static void xhci_doorbell_write(xhci_bus_t* xhci, size_t id, uint32_t val)
     }
 }
 
-static uint32_t xhci_interrupter_read(xhci_bus_t* xhci, size_t id, size_t offset)
+static uint32_t xhci_interrupter_read(xhci_bus_t* xhci, uint64_t id, uint64_t offset)
 {
     if (id < XHCI_MAX_INTRS) {
         xhci_interrupter_t* interrupter = &xhci->ints[id];
@@ -410,7 +410,7 @@ static uint32_t xhci_interrupter_read(xhci_bus_t* xhci, size_t id, size_t offset
     return 0;
 }
 
-static void xhci_interrupter_write(xhci_bus_t* xhci, size_t id, size_t offset, uint32_t val)
+static void xhci_interrupter_write(xhci_bus_t* xhci, uint64_t id, uint64_t offset, uint32_t val)
 {
     if (id < XHCI_MAX_INTRS) {
         xhci_interrupter_t* interrupter = &xhci->ints[id];
@@ -438,7 +438,7 @@ static void xhci_interrupter_write(xhci_bus_t* xhci, size_t id, size_t offset, u
     }
 }
 
-static bool xhci_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool xhci_pci_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     xhci_bus_t* xhci = dev->data;
     uint32_t val = 0;
@@ -447,7 +447,7 @@ static bool xhci_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8
 
     if ((offset - XHCI_RUNTIME_BASE) < XHCI_RUNTIME_SIZE) {
         // Runtime registers
-        size_t runtime_off = (offset - XHCI_RUNTIME_BASE);
+        uint64_t runtime_off = (offset - XHCI_RUNTIME_BASE);
         if (runtime_off < 0x20) {
             // TODO: Microframe index at XHCI_RUNTIME_BASE
             val = 0;
@@ -458,13 +458,13 @@ static bool xhci_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8
 
     } else if ((offset - XHCI_PORT_REGS_BASE) < XHCI_PORT_REGS_SIZE) {
         // Port registers
-        size_t port_id = (offset - XHCI_PORT_REGS_BASE) >> 4;
-        size_t port_off = (offset & 0xC);
+        uint64_t port_id = (offset - XHCI_PORT_REGS_BASE) >> 4;
+        uint64_t port_off = (offset & 0xC);
         val = xhci_port_reg_read(xhci, port_id, port_off);
 
     } else if (offset >= XHCI_EXT_CAPS_BASE) {
         // Extended capabilities
-        size_t entry = (offset - XHCI_EXT_CAPS_BASE) >> 2;
+        uint64_t entry = (offset - XHCI_EXT_CAPS_BASE) >> 2;
         if (entry < STATIC_ARRAY_SIZE(xhci_ext_caps)) {
             val = xhci_ext_caps[entry];
         }
@@ -532,7 +532,7 @@ static bool xhci_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8
     return true;
 }
 
-static bool xhci_pci_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool xhci_pci_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     xhci_bus_t* xhci = dev->data;
     uint32_t val = read_uint32_le(data);
@@ -544,7 +544,7 @@ static bool xhci_pci_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint
 
     } else if ((offset - XHCI_RUNTIME_BASE) < XHCI_RUNTIME_SIZE) {
         // Runtime registers
-        size_t runtime_off = (offset - XHCI_RUNTIME_BASE);
+        uint64_t runtime_off = (offset - XHCI_RUNTIME_BASE);
         if (runtime_off >= 0x20) {
             // Interrupter write
             xhci_interrupter_write(xhci, (runtime_off - 0x20) >> 5, runtime_off & 0x1C, val);
@@ -552,8 +552,8 @@ static bool xhci_pci_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint
 
     } else if ((offset - XHCI_PORT_REGS_BASE) < XHCI_PORT_REGS_SIZE) {
         // Port registers
-        size_t port_id = (offset - XHCI_PORT_REGS_BASE) >> 4;
-        size_t port_off = (offset & 0xC);
+        uint64_t port_id = (offset - XHCI_PORT_REGS_BASE) >> 4;
+        uint64_t port_off = (offset & 0xC);
         xhci_port_reg_write(xhci, port_id, port_off, val);
 
     } else switch (offset) {

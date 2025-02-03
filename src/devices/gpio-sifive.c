@@ -71,7 +71,7 @@ static void gpio_sifive_update_irqs(gpio_sifive_dev_t* bus)
 
     // Update IRQ pins
     if (atomic_swap_uint32(&bus->irqs, ip) != ip) {
-        for (size_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
+        for (uint64_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
             if (ip & (1U << i)) {
                 rvvm_raise_irq(bus->intc, bus->irq_pins[i]);
             } else {
@@ -108,7 +108,7 @@ static void gpio_sifive_update_out(gpio_sifive_dev_t* bus)
     gpio_pins_out(bus->gpio, 0, out);
 }
 
-static bool gpio_sifive_pins_in(rvvm_gpio_dev_t* gpio, size_t off, uint32_t pins)
+static bool gpio_sifive_pins_in(rvvm_gpio_dev_t* gpio, uint64_t off, uint32_t pins)
 {
     if (off == 0) {
         gpio_sifive_dev_t* bus = gpio->io_dev;
@@ -118,7 +118,7 @@ static bool gpio_sifive_pins_in(rvvm_gpio_dev_t* gpio, size_t off, uint32_t pins
     return false;
 }
 
-static uint32_t gpio_sifive_pins_read(rvvm_gpio_dev_t* gpio, size_t off)
+static uint32_t gpio_sifive_pins_read(rvvm_gpio_dev_t* gpio, uint64_t off)
 {
     if (off == 0) {
         gpio_sifive_dev_t* bus = gpio->io_dev;
@@ -130,7 +130,7 @@ static uint32_t gpio_sifive_pins_read(rvvm_gpio_dev_t* gpio, size_t off)
     return 0;
 }
 
-static bool gpio_sifive_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool gpio_sifive_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     gpio_sifive_dev_t* bus = dev->data;
     uint32_t val = 0;
@@ -188,7 +188,7 @@ static bool gpio_sifive_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offse
     return true;
 }
 
-static bool gpio_sifive_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool gpio_sifive_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     gpio_sifive_dev_t* bus = dev->data;
     uint32_t val = read_uint32_le(data);
@@ -282,7 +282,7 @@ PUBLIC rvvm_mmio_dev_t* gpio_sifive_init(rvvm_machine_t* machine, rvvm_gpio_dev_
 
     // Amount of IRQs controlls amount of GPIO pins
     // Each GPIO pin should have a unique IRQ!
-    for (size_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
+    for (uint64_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
         bus->irq_pins[i] = irqs[i];
     }
 
@@ -308,10 +308,10 @@ PUBLIC rvvm_mmio_dev_t* gpio_sifive_init(rvvm_machine_t* machine, rvvm_gpio_dev_
 
 #ifdef USE_FDT
     vector_t(uint32_t) irq_cells = {0};
-    for (size_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
+    for (uint64_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
         uint32_t cells[8] = {0};
-        size_t count = rvvm_fdt_irq_cells(intc, irqs[i], cells, STATIC_ARRAY_SIZE(cells));
-        for (size_t cell = 0; cell < count; ++cell) {
+        uint64_t count = rvvm_fdt_irq_cells(intc, irqs[i], cells, STATIC_ARRAY_SIZE(cells));
+        for (uint64_t cell = 0; cell < count; ++cell) {
             vector_push_back(irq_cells, cells[cell]);
         }
     }
@@ -339,7 +339,7 @@ PUBLIC rvvm_mmio_dev_t* gpio_sifive_init_auto(rvvm_machine_t* machine, rvvm_gpio
     rvvm_intc_t* intc = rvvm_get_intc(machine);
     rvvm_addr_t addr = rvvm_mmio_zone_auto(machine, GPIO_SIFIVE_ADDR_DEFAULT, GPIO_SIFIVE_MMIO_SIZE);
     uint32_t irqs[GPIO_SIFIVE_PINS] = {0};
-    for (size_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
+    for (uint64_t i = 0; i < GPIO_SIFIVE_PINS; ++i) {
         irqs[i] = rvvm_alloc_irq(intc);
     }
     return gpio_sifive_init(machine, gpio, addr, intc, irqs);

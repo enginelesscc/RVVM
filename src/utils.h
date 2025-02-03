@@ -30,33 +30,33 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #define STATIC_ARRAY_SIZE(arr) (sizeof(arr) / sizeof(*(arr)))
 
 // Align size up (To power of two!)
-static inline size_t align_size_up(size_t x, size_t align)
+static inline uint64_t align_size_up(uint64_t x, uint64_t align)
 {
     return (x + (align - 1)) & ~(align - 1);
 }
 
 // Align size down (To power of two!)
-static inline size_t align_size_down(size_t x, size_t align)
+static inline uint64_t align_size_down(uint64_t x, uint64_t align)
 {
     return x & ~(align - 1);
 }
 
 // Portable strtol/ltostr replacement
-size_t   uint_to_str_base(char* str, size_t size, uint64_t val, uint8_t base);
-uint64_t str_to_uint_base(const char* str, size_t* len, uint8_t base);
-size_t   int_to_str_base(char* str, size_t size, int64_t val, uint8_t base);
-int64_t  str_to_int_base(const char* str, size_t* len, uint8_t base);
-size_t   int_to_str_dec(char* str, size_t size, int64_t val);
+uint64_t   uint_to_str_base(char* str, uint64_t size, uint64_t val, uint8_t base);
+uint64_t str_to_uint_base(const char* str, uint64_t* len, uint8_t base);
+uint64_t   int_to_str_base(char* str, uint64_t size, int64_t val, uint8_t base);
+int64_t  str_to_int_base(const char* str, uint64_t* len, uint8_t base);
+uint64_t   int_to_str_dec(char* str, uint64_t size, int64_t val);
 int64_t  str_to_int_dec(const char* str);
 
 // Portable & safer string.h replacement
-size_t      rvvm_strlen(const char* string);
-size_t      rvvm_strnlen(const char* string, size_t size);
+uint64_t      rvvm_strlen(const char* string);
+uint64_t      rvvm_strnlen(const char* string, uint64_t size);
 bool        rvvm_strcmp(const char* s1, const char* s2);
-size_t      rvvm_strlcpy(char* dst, const char* src, size_t size);
+uint64_t      rvvm_strlcpy(char* dst, const char* src, uint64_t size);
 const char* rvvm_strfind(const char* string, const char* pattern);
 
-static inline size_t mem_suffix_shift(char suffix)
+static inline uint64_t mem_suffix_shift(char suffix)
 {
     switch (suffix) {
         case 'k': return 10;
@@ -70,10 +70,10 @@ static inline size_t mem_suffix_shift(char suffix)
 }
 
 // Generate random bytes
-void rvvm_randombytes(void* buffer, size_t size);
+void rvvm_randombytes(void* buffer, uint64_t size);
 
 // Generate random serial number (0-9, A-Z)
-void rvvm_randomserial(char* serial, size_t size);
+void rvvm_randomserial(char* serial, uint64_t size);
 
 /*
  * Safe memory allocation
@@ -90,9 +90,9 @@ void rvvm_randomserial(char* serial, size_t size);
 #endif
 
 // These never return NULL
-SAFE_MALLOC  void* safe_malloc(size_t size);
-SAFE_CALLOC  void* safe_calloc(size_t size, size_t n);
-SAFE_REALLOC void* safe_realloc(void* ptr, size_t size);
+SAFE_MALLOC  void* safe_malloc(uint64_t size);
+SAFE_CALLOC  void* safe_calloc(uint64_t size, uint64_t n);
+SAFE_REALLOC void* safe_realloc(void* ptr, uint64_t size);
 
 // Safe object allocation with type checking & zeroing
 #define safe_new_arr(type, size) ((type*)safe_calloc(size, sizeof(type)))

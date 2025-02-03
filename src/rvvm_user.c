@@ -318,13 +318,13 @@ static rvvm_machine_t* userland; // Emulated RVVM process context
 // Short cast rvvm_addr_t -> void*
 static void* to_ptr(rvvm_addr_t addr)
 {
-    return (void*)(size_t)addr;
+    return (void*)(uint64_t)addr;
 }
 
 // Short cast rvvm_addr_t -> const char*
 static const char* to_str(rvvm_addr_t addr)
 {
-    return (const char*)(size_t)addr;
+    return (const char*)(uint64_t)addr;
 }
 
 // Return last errno like a syscall interface
@@ -352,7 +352,7 @@ static elf_desc_t interp = {
     .base = NULL,
 };
 
-static bool proc_mem_readable(const void* addr, size_t size)
+static bool proc_mem_readable(const void* addr, uint64_t size)
 {
     static int fd = 0;
     DO_ONCE({
@@ -395,7 +395,7 @@ static const char* wrap_path(char* buffer, const char* path)
         }
 
         if (rvvm_strfind(path, "/") == path) {
-            size_t prefix_len = rvvm_strlcpy(buffer, prefix_path, UAPI_PATH_MAX);
+            uint64_t prefix_len = rvvm_strlcpy(buffer, prefix_path, UAPI_PATH_MAX);
             rvvm_strlcpy(buffer + prefix_len, path, UAPI_PATH_MAX - prefix_len);
             return buffer;
         }
@@ -403,11 +403,11 @@ static const char* wrap_path(char* buffer, const char* path)
     return path;
 }
 
-static size_t unwrap_path(char* buffer, const char* path, size_t size)
+static uint64_t unwrap_path(char* buffer, const char* path, uint64_t size)
 {
     if (prefix_path && rvvm_strfind(path, prefix_path) == path) {
-        size_t len = rvvm_strlen(prefix_path) + 1;
-        size_t off = rvvm_strlcpy(buffer, "/", size);
+        uint64_t len = rvvm_strlen(prefix_path) + 1;
+        uint64_t off = rvvm_strlcpy(buffer, "/", size);
         return rvvm_strlcpy(buffer + off, path + len, size - off);
     }
 
@@ -472,7 +472,7 @@ static void* rvvm_sys_brk(void* addr)
 #define UAPI_CLONE_INVALID_THREAD_FLAGS 0x7E02F000
 
 // long sys_clone(unsigned long flags, void *stack, int *parent_tid, unsigned long tls, int *child_tid);
-static int rvvm_sys_clone(rvvm_hart_t* cpu, uint32_t flags, size_t stack, uint32_t* parent_tid, size_t tls, uint32_t* child_tid)
+static int rvvm_sys_clone(rvvm_hart_t* cpu, uint32_t flags, uint64_t stack, uint32_t* parent_tid, uint64_t tls, uint32_t* child_tid)
 {
     if ((flags & UAPI_CLONE_VM) && !(flags & UAPI_CLONE_VFORK)) {
         if (flags & UAPI_CLONE_INVALID_THREAD_FLAGS) {
@@ -484,10 +484,10 @@ static int rvvm_sys_clone(rvvm_hart_t* cpu, uint32_t flags, size_t stack, uint32
         thread->cpu = rvvm_create_user_thread(userland);
 
         // Clone all CPU state
-        for (size_t i=1; i<32; ++i) {
+        for (uint64_t i=1; i<32; ++i) {
             rvvm_write_cpu_reg(thread->cpu, RVVM_REGID_X0 + i, rvvm_read_cpu_reg(cpu, RVVM_REGID_X0 + i));
         }
-        for (size_t i=0; i<32; ++i) {
+        for (uint64_t i=0; i<32; ++i) {
             rvvm_write_cpu_reg(thread->cpu, RVVM_REGID_F0 + i, rvvm_read_cpu_reg(cpu, RVVM_REGID_F0 + i));
         }
 
@@ -539,7 +539,7 @@ static int rvvm_sys_clone(rvvm_hart_t* cpu, uint32_t flags, size_t stack, uint32
 #define UAPI_FUTEX_WAIT_BITSET 0x9
 #define UAPI_FUTEX_WAKE_BITSET 0xA
 
-static int rvvm_sys_futex(uint32_t* addr, int futex_op, uint32_t val, size_t val2, uint32_t* uaddr2, uint32_t val3)
+static int rvvm_sys_futex(uint32_t* addr, int futex_op, uint32_t val, uint64_t val2, uint32_t* uaddr2, uint32_t val3)
 {
 #if defined(__linux__)
     return errno_ret(syscall(SYS_futex, addr, futex_op, val, val2, uaddr2, val3));
@@ -578,7 +578,7 @@ static int rvvm_sys_select_time32(int nfds, void* rfds, void* wfds, void* efds, 
     return errno_ret(select(nfds, rfds, wfds, efds, uapi_ts32_to_timeval(&tv, ts32)));
 }
 
-static int rvvm_sys_poll_time32(void* pfds, size_t npfds, const struct uapi_timespec32* ts32)
+static int rvvm_sys_poll_time32(void* pfds, uint64_t npfds, const struct uapi_timespec32* ts32)
 {
     // TODO: struct pollfd conversion
     int timeout = -1;
@@ -588,7 +588,7 @@ static int rvvm_sys_poll_time32(void* pfds, size_t npfds, const struct uapi_time
     return errno_ret(poll(pfds, npfds, timeout));
 }
 
-static int64_t rvvm_sys_getdents64(int fd, void* dirp, size_t size)
+static int64_t rvvm_sys_getdents64(int fd, void* dirp, uint64_t size)
 {
     int64_t ret = 0;
     ret = errno_ret(syscall(SYS_getdents64, fd, dirp, size));
@@ -598,8 +598,8 @@ static int64_t rvvm_sys_getdents64(int fd, void* dirp, size_t size)
     if (dir) {
         struct dirent* dent = NULL;
         while ((dent = readdir(dir))) {
-            size_t name_len = rvvm_strlen(dent->d_name);
-            size_t dirent_size = sizeof(struct uapi_linux_dirent64) + name_len + 1;
+            uint64_t name_len = rvvm_strlen(dent->d_name);
+            uint64_t dirent_size = sizeof(struct uapi_linux_dirent64) + name_len + 1;
             if (dirent_size <= size) {
                 struct uapi_linux_dirent64* dirent = dirp;
                 dirent->d_ino = dent->d_ino;
@@ -654,7 +654,7 @@ static inline int rvvm_sys_prot(int prot)
     return ret;
 }
 
-static rvvm_addr_t rvvm_sys_mmap(void* addr, size_t size, int prot, int flags, int fd, uint64_t offset)
+static rvvm_addr_t rvvm_sys_mmap(void* addr, uint64_t size, int prot, int flags, int fd, uint64_t offset)
 {
     int mmap_flags = 0;
     if (flags & UAPI_MAP_ILLEGAL) {
@@ -682,12 +682,12 @@ static rvvm_addr_t rvvm_sys_mmap(void* addr, size_t size, int prot, int flags, i
 #endif
     }
 
-    rvvm_addr_t ret = errno_ret((size_t)mmap(addr, size, rvvm_sys_prot(prot), mmap_flags, fd, offset));
+    rvvm_addr_t ret = errno_ret((uint64_t)mmap(addr, size, rvvm_sys_prot(prot), mmap_flags, fd, offset));
     spin_unlock(&mmap_lock);
     return ret;
 }
 
-static int rvvm_sys_munmap(void* addr, size_t size)
+static int rvvm_sys_munmap(void* addr, uint64_t size)
 {
     spin_lock(&mmap_lock);
     rvvm_addr_t ret = errno_ret(munmap(addr, size));
@@ -755,7 +755,7 @@ static int rvvm_sys_getresgid(int* rgid, int* egid, int* sgid)
     return 0;
 }
 
-static rvvm_addr_t rvvm_sys_getcwd(char* buffer, size_t size)
+static rvvm_addr_t rvvm_sys_getcwd(char* buffer, uint64_t size)
 {
     char tmp[UAPI_PATH_MAX] = {0};
     if (!getcwd(tmp, size)) {
@@ -764,7 +764,7 @@ static rvvm_addr_t rvvm_sys_getcwd(char* buffer, size_t size)
     return unwrap_path(buffer, tmp, size);
 }
 
-static rvvm_addr_t rvvm_sys_readlinkat(int dirfd, const char* pathname, char* buffer, size_t size)
+static rvvm_addr_t rvvm_sys_readlinkat(int dirfd, const char* pathname, char* buffer, uint64_t size)
 {
     char tmp[UAPI_PATH_MAX] = {0};
     if (readlinkat(dirfd, wrap_path(tmp, pathname), tmp, size) < 0) {
@@ -1259,7 +1259,7 @@ static void* rvvm_user_thread_wrap(void* arg)
                     break;
                 case 196: // shmat
                     rvvm_info("sys_shmat(%ld, %lx, %lx)", a0, a1, a2);
-                    a0 = errno_ret((size_t)shmat(a0, to_ptr(a1), a2));
+                    a0 = errno_ret((uint64_t)shmat(a0, to_ptr(a1), a2));
                     break;
                 case 197: // shmdt
                     rvvm_info("sys_shmdt(%lx)", a0);
@@ -1336,7 +1336,7 @@ static void* rvvm_user_thread_wrap(void* arg)
                     break;
                 case 214: // brk
                     rvvm_info("sys_brk(%lx)", a0);
-                    a0 = (size_t)rvvm_sys_brk(to_ptr(a0));
+                    a0 = (uint64_t)rvvm_sys_brk(to_ptr(a0));
                     break;
                 case 215: // munmap
                     rvvm_info("sys_munmap(%lx, %lx)", a0, a1);
@@ -1345,7 +1345,7 @@ static void* rvvm_user_thread_wrap(void* arg)
 #ifdef __linux__
                 case 216: // mremap
                     rvvm_info("sys_mremap(%lx, %lx, %lx, %lx, %lx)", a0, a1, a2, a3, a4);
-                    a0 = errno_ret((size_t)mremap(to_ptr(a0), a1, a2, a3, to_ptr(a4)));
+                    a0 = errno_ret((uint64_t)mremap(to_ptr(a0), a1, a2, a3, to_ptr(a4)));
                     break;
 #endif
                 case 220: // clone
@@ -1360,7 +1360,7 @@ static void* rvvm_user_thread_wrap(void* arg)
                     }
                     char** orig_argv = to_ptr(a1);
                     char* new_argv[256] = {"/proc/self/exe", "-user", 0};
-                    for (size_t i=2; i<255 && orig_argv[i - 2]; ++i) new_argv[i] = orig_argv[i - 2];
+                    for (uint64_t i=2; i<255 && orig_argv[i - 2]; ++i) new_argv[i] = orig_argv[i - 2];
                     new_argv[2] = to_ptr(a0);
                     a0 = errno_ret(execve("/proc/self/exe", new_argv, to_ptr(a2)));
                     break;
@@ -1479,11 +1479,11 @@ static void* rvvm_user_thread_wrap(void* arg)
             void** next_fp = (void*)rvvm_read_cpu_reg(cpu, RVVM_REGID_X0 + 8);
             do {
                 rvvm_warn(" PC %lx", pc);
-                if (pc >= (size_t)elf.base && pc < (size_t)elf.base + elf.buf_size) {
-                    rvvm_warn("  @ Main binary, reloc: %lx", pc - (size_t)elf.base);
+                if (pc >= (uint64_t)elf.base && pc < (uint64_t)elf.base + elf.buf_size) {
+                    rvvm_warn("  @ Main binary, reloc: %lx", pc - (uint64_t)elf.base);
                 }
-                if (pc >= (size_t)interp.base && pc < (size_t)interp.base + interp.buf_size) {
-                    rvvm_warn("  @ Interpreter, reloc: %lx)", pc - (size_t)interp.base);
+                if (pc >= (uint64_t)interp.base && pc < (uint64_t)interp.base + interp.buf_size) {
+                    rvvm_warn("  @ Interpreter, reloc: %lx)", pc - (uint64_t)interp.base);
                 }
                 if (next_fp <= fp) break;
                 if (!proc_mem_readable(fp, 8)) {
@@ -1492,17 +1492,17 @@ static void* rvvm_user_thread_wrap(void* arg)
                 }
                 next_fp = fp[-2];
                 rvvm_warn("Next FP: %p", next_fp);
-                pc = (size_t)fp[-1];
+                pc = (uint64_t)fp[-1];
                 fp = next_fp;
             } while (true);
 
             if (proc_mem_readable((void*)pc_al, 32)) {
                 rvvm_warn("Instruction bytes around PC:");
-                for (size_t i=0; i<32; ++i) {
+                for (uint64_t i=0; i<32; ++i) {
                     printf("%02x", *(uint8_t*)(pc_al + i));
                 }
                 printf("\n");
-                for (size_t i=0; i<32; ++i) {
+                for (uint64_t i=0; i<32; ++i) {
                     printf("%s", (pc_al + i == pc) ? "^ " : "  ");
                 }
                 printf("\n");
@@ -1528,8 +1528,8 @@ static void* rvvm_user_thread_wrap(void* arg)
 static void jump_start(void* entry, void* stack_top)
 {
 #ifdef RVVM_USER_TEST_RISCV
-    register size_t a0 __asm__("a0") = (size_t) entry;
-    register size_t sp __asm__("sp") = (size_t) stack_top;
+    register uint64_t a0 __asm__("a0") = (uint64_t) entry;
+    register uint64_t sp __asm__("sp") = (uint64_t) stack_top;
 
     __asm__ __volatile__(
         "jr a0;"
@@ -1538,9 +1538,9 @@ static void jump_start(void* entry, void* stack_top)
         :
     );
 #elif defined(RVVM_USER_TEST_X86)
-    register size_t rax __asm__("rax") = (size_t) entry;
-    register size_t rsp __asm__("rsp") = (size_t) stack_top;
-    register size_t rdx __asm__("rdx") = (size_t) &exit; // Why do we even need to pass this?
+    register uint64_t rax __asm__("rax") = (uint64_t) entry;
+    register uint64_t rsp __asm__("rsp") = (uint64_t) stack_top;
+    register uint64_t rdx __asm__("rdx") = (uint64_t) &exit; // Why do we even need to pass this?
 
     __asm__ __volatile__(
         "jmp *%0;"
@@ -1553,8 +1553,8 @@ static void jump_start(void* entry, void* stack_top)
     rvvm_user_thread_t* thread = safe_new_obj(rvvm_user_thread_t);
     thread->cpu = rvvm_create_user_thread(userland);
 
-    rvvm_write_cpu_reg(thread->cpu, RVVM_REGID_X0 + 2, (size_t)stack_top);
-    rvvm_write_cpu_reg(thread->cpu, RVVM_REGID_PC,     (size_t)entry);
+    rvvm_write_cpu_reg(thread->cpu, RVVM_REGID_X0 + 2, (uint64_t)stack_top);
+    rvvm_write_cpu_reg(thread->cpu, RVVM_REGID_PC,     (uint64_t)entry);
 
     rvvm_user_thread_wrap(thread);
 
@@ -1565,23 +1565,23 @@ static void jump_start(void* entry, void* stack_top)
 // Describes the executable to be ran
 typedef struct {
     // Self explanatory
-    size_t argc;
+    uint64_t argc;
     char** argv;
     char** envp;
 
-    size_t base;         // Main ELF base address (relocation)
-    size_t entry;        // Main ELF entry point
-    size_t interp_base;  // ELF interpreter (aka linker usually) base address
-    size_t interp_entry; // ELF interpreter entry point
-    size_t phdr;         // Address of ELF PHDR section
-    size_t phnum;        // Number of PHDRs
+    uint64_t base;         // Main ELF base address (relocation)
+    uint64_t entry;        // Main ELF entry point
+    uint64_t interp_base;  // ELF interpreter (aka linker usually) base address
+    uint64_t interp_entry; // ELF interpreter entry point
+    uint64_t phdr;         // Address of ELF PHDR section
+    uint64_t phnum;        // Number of PHDRs
 } exec_desc_t;
 
 /*
  * Guest process stack setup routines
  */
 
-static void* stack_put_mem(uint8_t* stack, const void* mem, size_t len)
+static void* stack_put_mem(uint8_t* stack, const void* mem, uint64_t len)
 {
     stack -= len;
     memcpy(stack, mem, len);
@@ -1626,14 +1626,14 @@ static char* rvvm_user_init_stack(void* stack, exec_desc_t* desc)
 {
     /*
      * Stack layout (upside down):
-     * 1. argc (guest size_t)
+     * 1. argc (guest uint64_t)
      * 2. string pointers: argv, 0, envp, 0
      * 3. auxv
      * 4. padding
      * 5. random bytes (16)
      * 6. string data: argv, envp
      * 7. string data: execfn
-     * 8. null (guest size_t)
+     * 8. null (guest uint64_t)
      */
 
     // 8. null
@@ -1644,20 +1644,20 @@ static char* rvvm_user_init_stack(void* stack, exec_desc_t* desc)
     char* execfn = stack;
 
     // 6. string data: argv, envp
-    size_t envc = 0;
+    uint64_t envc = 0;
     while (desc->envp[envc]) envc++;
 
-    size_t string_num = desc->argc + envc + 2;
+    uint64_t string_num = desc->argc + envc + 2;
     uapi_size_t* string_ptrs = safe_new_arr(uapi_size_t, string_num);
 
-    for (size_t i = envc; i--;) {
+    for (uint64_t i = envc; i--;) {
         stack = stack_put_str(stack, desc->envp[i]);
-        string_ptrs[desc->argc + 1 + i] = (size_t)stack;
+        string_ptrs[desc->argc + 1 + i] = (uint64_t)stack;
     }
 
-    for (size_t i = desc->argc; i--;) {
+    for (uint64_t i = desc->argc; i--;) {
         stack = stack_put_str(stack, desc->argv[i]);
-        string_ptrs[i] = (size_t)stack;
+        string_ptrs[i] = (uint64_t)stack;
     }
 
     // 5. random bytes
@@ -1667,7 +1667,7 @@ static char* rvvm_user_init_stack(void* stack, exec_desc_t* desc)
     char* random_bytes = stack;
 
     // 4. align to 16 bytes
-    stack = (char*)align_size_down((size_t)stack, 16);
+    stack = (char*)align_size_down((uint64_t)stack, 16);
 
     // 3. auxv, then null
     uapi_size_t auxv[] = {
@@ -1688,8 +1688,8 @@ static char* rvvm_user_init_stack(void* stack, exec_desc_t* desc)
         UAPI_AT_CLKTCK,        100,
         UAPI_AT_SECURE,        0,
         UAPI_AT_BASE_PLATFORM, 0,
-        UAPI_AT_RANDOM,        (size_t)random_bytes,
-        UAPI_AT_EXECFN,        (size_t)execfn,
+        UAPI_AT_RANDOM,        (uint64_t)random_bytes,
+        UAPI_AT_EXECFN,        (uint64_t)execfn,
         UAPI_AT_NULL,
     };
     stack = stack_put_mem(stack, auxv, sizeof(auxv));
@@ -1736,7 +1736,7 @@ int rvvm_user_linux(int argc, char** argv, char** envp)
         return -1;
     }
     rvvm_info("Loaded ELF %s at base %lx, entry %lx,\n%ld PHDRs at %lx",
-              argv[0], (size_t)elf.base, elf.entry, elf.phnum, elf.phdr);
+              argv[0], (uint64_t)elf.base, elf.entry, elf.phnum, elf.phdr);
 
     if (elf.interp_path) {
         rvvm_info("ELF interpreter at %s", elf.interp_path);
@@ -1748,7 +1748,7 @@ int rvvm_user_linux(int argc, char** argv, char** envp)
             return -1;
         }
         rvvm_info("Loaded interpreter %s at base %lx, entry %lx,\n%ld PHDRs at %lx",
-                  elf.interp_path, (size_t)interp.base, interp.entry, interp.phnum, interp.phdr);
+                  elf.interp_path, (uint64_t)interp.base, interp.entry, interp.phnum, interp.phdr);
     }
 
     if (envp == NULL) {
@@ -1766,9 +1766,9 @@ int rvvm_user_linux(int argc, char** argv, char** envp)
         .argc = argc,
         .argv = argv,
         .envp = envp,
-        .base = (size_t)elf.base,
+        .base = (uint64_t)elf.base,
         .entry = elf.entry,
-        .interp_base = (size_t)interp.base,
+        .interp_base = (uint64_t)interp.base,
         .interp_entry = interp.entry,
         .phdr = elf.phdr,
         .phnum = elf.phnum,

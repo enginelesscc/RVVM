@@ -12,7 +12,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "bit_ops.h"
 #include <string.h>
 
-void hashmap_init(hashmap_t* map, size_t size)
+void hashmap_init(hashmap_t* map, uint64_t size)
 {
     if (!size) size = 16;
     map->entries = 0;
@@ -27,7 +27,7 @@ void hashmap_destroy(hashmap_t* map)
     memset(map, 0, sizeof(hashmap_t));
 }
 
-void hashmap_resize(hashmap_t* map, size_t size)
+void hashmap_resize(hashmap_t* map, uint64_t size)
 {
     hashmap_t tmp;
     hashmap_init(&tmp, size);
@@ -39,13 +39,13 @@ void hashmap_resize(hashmap_t* map, size_t size)
     map->entry_balance = map->entries;
 }
 
-void hashmap_grow(hashmap_t* map, size_t key, size_t val)
+void hashmap_grow(hashmap_t* map, uint64_t key, uint64_t val)
 {
     hashmap_resize(map, (map->size + 1) << 1);
     hashmap_put(map, key, val);
 }
 
-static size_t hashmap_calc_shrink(hashmap_t* map)
+static uint64_t hashmap_calc_shrink(hashmap_t* map)
 {
     if (unlikely(map->entries && map->entry_balance > map->entries)) {
         return map->size / (map->entry_balance / map->entries);
@@ -55,7 +55,7 @@ static size_t hashmap_calc_shrink(hashmap_t* map)
 
 void hashmap_shrink(hashmap_t* map)
 {
-    size_t size = hashmap_calc_shrink(map);
+    uint64_t size = hashmap_calc_shrink(map);
     if (unlikely(size < map->size)) {
         hashmap_resize(map, size);
     }
@@ -63,7 +63,7 @@ void hashmap_shrink(hashmap_t* map)
 
 void hashmap_clear(hashmap_t* map)
 {
-    size_t size = bit_next_pow2(hashmap_calc_shrink(map)) - 1;
+    uint64_t size = bit_next_pow2(hashmap_calc_shrink(map)) - 1;
     if (size < map->size) {
         map->size = size;
         map->buckets = safe_realloc(map->buckets, (map->size + 1) * sizeof(hashmap_bucket_t));
@@ -73,9 +73,9 @@ void hashmap_clear(hashmap_t* map)
     map->entries = 0;
 }
 
-void hashmap_rebalance(hashmap_t* map, size_t index)
+void hashmap_rebalance(hashmap_t* map, uint64_t index)
 {
-    size_t j = index, k;
+    uint64_t j = index, k;
     while (true) {
         map->buckets[index].val = 0;
         do {

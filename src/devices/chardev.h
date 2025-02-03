@@ -22,8 +22,8 @@ typedef struct rvvm_chardev chardev_t;
 
 struct rvvm_chardev {
     // IO Dev -> Chardev calls
-    size_t (*read)(chardev_t* dev, void* buf, size_t nbytes);
-    size_t (*write)(chardev_t* dev, const void* buf, size_t nbytes);
+    uint64_t (*read)(chardev_t* dev, void* buf, uint64_t nbytes);
+    uint64_t (*write)(chardev_t* dev, const void* buf, uint64_t nbytes);
     uint32_t (*poll)(chardev_t* dev);
 
     // Chardev -> IO Device notifications (IRQ)
@@ -40,13 +40,13 @@ struct rvvm_chardev {
 #define CHARDEV_RX 0x1
 #define CHARDEV_TX 0x2
 
-static inline size_t chardev_read(chardev_t* dev, void* buf, size_t nbytes)
+static inline uint64_t chardev_read(chardev_t* dev, void* buf, uint64_t nbytes)
 {
     if (dev) return dev->read(dev, buf, nbytes);
     return 0;
 }
 
-static inline size_t chardev_write(chardev_t* dev, const void* buf, size_t nbytes)
+static inline uint64_t chardev_write(chardev_t* dev, const void* buf, uint64_t nbytes)
 {
     if (dev) return dev->write(dev, buf, nbytes);
     return nbytes;

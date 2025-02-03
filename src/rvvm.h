@@ -123,10 +123,10 @@ typedef int32_t  rvvm_sxlen_t;
 
 typedef struct {
     // Pointer to page (With vaddr subtracted, for faster TLB translation)
-    size_t ptr;
+    uint64_t ptr;
 #if !defined(HOST_64BIT)
     // Make entry size a power of 2 (32 bytes)
-    size_t align;
+    uint64_t align;
 #endif
     // Virtual page number per each op type (vaddr >> 12)
     rvvm_addr_t r;
@@ -140,7 +140,7 @@ typedef struct {
     // Pointer to code block
     rvjit_func_t block;
 #if !defined(HOST_64BIT)
-    size_t align;
+    uint64_t align;
 #endif
     // Virtual PC of this entry
     rvvm_addr_t pc;
@@ -157,7 +157,7 @@ BUILD_ASSERT(sizeof(rvvm_jit_tlb_entry_t) == 16);
 
 typedef struct {
     rvvm_addr_t addr; // Physical memory base address (Should be page-aligned)
-    size_t      size; // Physical memory amount (Should be page-aligned)
+    uint64_t      size; // Physical memory amount (Should be page-aligned)
     void*       data; // Pointer to memory data (Preferably page-aligned)
 } rvvm_ram_t;
 

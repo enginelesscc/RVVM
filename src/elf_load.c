@@ -56,8 +56,8 @@ bool elf_load_file(rvfile_t* file, elf_desc_t* elf)
     uint64_t elf_entry = class64 ? read_uint64_le_m(tmp + 24) : read_uint32_le_m(tmp + 24);
     uint64_t elf_phoff = class64 ? read_uint64_le_m(tmp + 32) : read_uint32_le_m(tmp + 28);
     //uint64_t elf_shoff = class64 ? read_uint64_le_m(tmp + 40) : read_uint32_le_m(tmp + 32);
-    size_t   elf_phnsz = class64 ? 56 : 32;
-    size_t   elf_phnum = read_uint16_le_m(tmp + (class64 ? 56 : 44));
+    uint64_t   elf_phnsz = class64 ? 56 : 32;
+    uint64_t   elf_phnum = read_uint16_le_m(tmp + (class64 ? 56 : 44));
 
     elf->entry = elf_entry;
     elf->interp_path = NULL;
@@ -67,7 +67,7 @@ bool elf_load_file(rvfile_t* file, elf_desc_t* elf)
     // Determine lowest / highest virtual address, PHDR address
     uint64_t elf_loaddr = (uint64_t)-1;
     uint64_t elf_hiaddr = 0;
-    for (size_t i=0; i<elf_phnum; ++i) {
+    for (uint64_t i=0; i<elf_phnum; ++i) {
         uint64_t elf_phent_off = elf_phoff + (elf_phnsz * i);
         WRAP_ERR(rvread(file, tmp, elf_phnsz, elf_phent_off) == elf_phnsz, "Failed to read ELF phent");
         uint32_t p_type = read_uint32_le_m(tmp);
@@ -94,14 +94,14 @@ bool elf_load_file(rvfile_t* file, elf_desc_t* elf)
             WRAP_ERR(elf->base, "Failed to allocate dynamic ELF VMA");
         } else {
             // Non-relocatable ELF at fixed address
-            elf->base = vma_alloc((void*)(size_t)elf_loaddr, elf->buf_size, VMA_RDWR | VMA_FIXED);
+            elf->base = vma_alloc((void*)(uint64_t)elf_loaddr, elf->buf_size, VMA_RDWR | VMA_FIXED);
             WRAP_ERR(elf->base, "Failed to map fixed ELF VMA, address collision?");
         }
-        if (elf->entry) elf->entry += (size_t)elf->base - elf_loaddr;
-        if (elf->phdr)  elf->phdr  += (size_t)elf->base - elf_loaddr;
+        if (elf->entry) elf->entry += (uint64_t)elf->base - elf_loaddr;
+        if (elf->phdr)  elf->phdr  += (uint64_t)elf->base - elf_loaddr;
     }
 
-    for (size_t i=0; i<elf_phnum; ++i) {
+    for (uint64_t i=0; i<elf_phnum; ++i) {
         uint64_t elf_phent_off = elf_phoff + (elf_phnsz * i);
         WRAP_ERR(rvread(file, tmp, elf_phnsz, elf_phent_off) == elf_phnsz, "Failed to read ELF phent");
         uint32_t p_type = read_uint32_le_m(tmp);
@@ -128,7 +128,7 @@ bool elf_load_file(rvfile_t* file, elf_desc_t* elf)
     return true;
 }
 
-bool bin_objcopy(rvfile_t* file, void* buffer, size_t size, bool try_elf)
+bool bin_objcopy(rvfile_t* file, void* buffer, uint64_t size, bool try_elf)
 {
     uint8_t mag[4] = {0};
     if (try_elf && rvread(file, mag, 4, 0) == 4 && read_uint32_le_m(mag) == 0x464c457F) {

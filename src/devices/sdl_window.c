@@ -642,7 +642,7 @@ bool sdl_window_init(gui_window_t* win)
             win->fb.buffer = vma_alloc(NULL, framebuffer_size(&win->fb), VMA_RDWR);
         } else {
             // Direct framebuffer surface, like XShm
-            if (((size_t)sdl_surface->pixels) & 0xFFF) {
+            if (((uint64_t)sdl_surface->pixels) & 0xFFF) {
                 rvvm_info("SDL surface is misaligned. Expect higher CPU use.");
             }
             win->fb.buffer = sdl_surface->pixels;

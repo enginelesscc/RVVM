@@ -201,20 +201,20 @@ static bool ps2_mouse_cmd(hid_mouse_t* mice, uint8_t cmd)
     }
 }
 
-static size_t ps2_mouse_read(chardev_t* dev, void* buf, size_t size)
+static uint64_t ps2_mouse_read(chardev_t* dev, void* buf, uint64_t size)
 {
     hid_mouse_t* mice = dev->data;
     spin_lock(&mice->lock);
-    size_t ret = ringbuf_read(&mice->cmdbuf, buf, size);
+    uint64_t ret = ringbuf_read(&mice->cmdbuf, buf, size);
     spin_unlock(&mice->lock);
     return ret;
 }
 
-static size_t ps2_mouse_write(chardev_t* dev, const void* buf, size_t size)
+static uint64_t ps2_mouse_write(chardev_t* dev, const void* buf, uint64_t size)
 {
     hid_mouse_t* mice = dev->data;
     spin_lock(&mice->lock);
-    for (size_t i=0; i<size; ++i) {
+    for (uint64_t i=0; i<size; ++i) {
         uint8_t val = ((const uint8_t*)buf)[i];
 
         switch (mice->state) {

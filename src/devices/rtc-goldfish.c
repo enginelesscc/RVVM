@@ -54,7 +54,7 @@ static void rtc_goldfish_update(rtc_goldfish_dev_t* rtc)
     }
 }
 
-static bool rtc_goldfish_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool rtc_goldfish_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     rtc_goldfish_dev_t* rtc = dev->data;
     uint32_t val = 0;
@@ -86,7 +86,7 @@ static bool rtc_goldfish_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offs
     return true;
 }
 
-static bool rtc_goldfish_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool rtc_goldfish_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     rtc_goldfish_dev_t* rtc = dev->data;
     uint32_t val = read_uint32_le(data);

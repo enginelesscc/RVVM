@@ -142,7 +142,7 @@ typedef struct {
     uint8_t  mac[RTL8169_MAC_SIZE];
     // Descriptor segmentation reassembly buffer
     uint8_t  seg_buff[RTL8169_MAX_PKT_SIZE];
-    size_t   seg_size;
+    uint64_t   seg_size;
 } rtl8169_dev_t;
 
 static void rtl8169_reset(rvvm_mmio_dev_t* dev)
@@ -158,7 +158,7 @@ static void rtl8169_reset(rvvm_mmio_dev_t* dev)
     rtl8169->phyar = 0;
 }
 
-static void rtl8169_interrupt(rtl8169_dev_t* rtl8169, size_t irq)
+static void rtl8169_interrupt(rtl8169_dev_t* rtl8169, uint64_t irq)
 {
     uint32_t irqs = 1U << irq;
     atomic_or_uint32(&rtl8169->isr, irqs);
@@ -256,7 +256,7 @@ static void rtl8169_93c56_pins_write(rtl8169_dev_t* rtl8169, uint8_t pins)
     rtl8169->eeprom.pins = pins;
 }
 
-static bool rtl8169_feed_rx(void* net_dev, const void* data, size_t size)
+static bool rtl8169_feed_rx(void* net_dev, const void* data, uint64_t size)
 {
     rtl8169_dev_t* rtl8169 = net_dev;
     if (likely(atomic_load_uint32_relax(&rtl8169->cr) & RTL8169_CR_RE)) {
@@ -279,7 +279,7 @@ static bool rtl8169_feed_rx(void* net_dev, const void* data, size_t size)
         }
 
         rvvm_addr_t packet_addr = read_uint64_le(cmd + 8);
-        size_t packet_size = flags & 0x3FFF;
+        uint64_t packet_size = flags & 0x3FFF;
         uint8_t* packet_ptr = pci_get_dma_ptr(rtl8169->pci_func, packet_addr, packet_size);
         if (packet_ptr == NULL || packet_size < size + 4) {
             // Packet DMA error
@@ -310,7 +310,7 @@ static void rtl8169_handle_tx(rtl8169_dev_t* rtl8169, rtl8169_ring_t* ring)
 {
     if (likely(atomic_load_uint32_relax(&rtl8169->cr) & RTL8169_CR_TE)) {
         // Transmitter enabled
-        size_t tx_id = ring->index;
+        uint64_t tx_id = ring->index;
         bool tx_irq = false;
         do {
             uint8_t* cmd = pci_get_dma_ptr(rtl8169->pci_func, ring->addr + (ring->index << 4), 16);
@@ -328,7 +328,7 @@ static void rtl8169_handle_tx(rtl8169_dev_t* rtl8169, rtl8169_ring_t* ring)
             }
 
             rvvm_addr_t packet_addr = read_uint64_le(cmd + 8);
-            size_t packet_size = flags & 0x3FFF;
+            uint64_t packet_size = flags & 0x3FFF;
             void* packet_ptr = pci_get_dma_ptr(rtl8169->pci_func, packet_addr, packet_size);
 
             if (packet_ptr) {
@@ -371,7 +371,7 @@ static void rtl8169_handle_tx(rtl8169_dev_t* rtl8169, rtl8169_ring_t* ring)
     }
 }
 
-static bool rtl8169_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool rtl8169_pci_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     rtl8169_dev_t* rtl8169 = dev->data;
     uint8_t tmp[4] = {0};
@@ -435,7 +435,7 @@ static bool rtl8169_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, ui
     return true;
 }
 
-static bool rtl8169_pci_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool rtl8169_pci_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     rtl8169_dev_t* rtl8169 = dev->data;
     uint32_t val = 0;

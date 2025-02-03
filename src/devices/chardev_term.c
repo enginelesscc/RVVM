@@ -107,10 +107,10 @@ static uint32_t term_update_flags(chardev_term_t* term)
     return flags & ~atomic_swap_uint32(&term->flags, flags);
 }
 
-static void term_push_io(chardev_term_t* term, char* buffer, size_t* rx_size, size_t* tx_size)
+static void term_push_io(chardev_term_t* term, char* buffer, uint64_t* rx_size, uint64_t* tx_size)
 {
-    size_t to_read = rx_size ? *rx_size : 0;
-    size_t to_write = tx_size ? *tx_size : 0;
+    uint64_t to_read = rx_size ? *rx_size : 0;
+    uint64_t to_write = tx_size ? *tx_size : 0;
     if (rx_size) *rx_size = 0;
     if (tx_size) *tx_size = 0;
     UNUSED(term);
@@ -140,7 +140,7 @@ static void term_push_io(chardev_term_t* term, char* buffer, size_t* rx_size, si
     }
     if (to_read && _kbhit()) {
         wchar_t w_buf[64] = {0};
-        size_t count = EVAL_MIN(to_read / 6, STATIC_ARRAY_SIZE(w_buf));
+        uint64_t count = EVAL_MIN(to_read / 6, STATIC_ARRAY_SIZE(w_buf));
         DWORD w_chars = 0;
         ReadConsoleW(GetStdHandle(STD_INPUT_HANDLE), w_buf, count, &w_chars, NULL);
         *rx_size = WideCharToMultiByte(CP_UTF8, 0,
@@ -156,9 +156,9 @@ static void term_push_io(chardev_term_t* term, char* buffer, size_t* rx_size, si
 }
 
 // Handles VM-related hotkeys
-static void term_process_input(chardev_term_t* term, char* buffer, size_t size)
+static void term_process_input(chardev_term_t* term, char* buffer, uint64_t size)
 {
-    for (size_t i=0; i<size; ++i) {
+    for (uint64_t i=0; i<size; ++i) {
         if (term->ctrl_a) {
             if (buffer[i] == 'x') {
                 // Exit on Ctrl+A, x
@@ -177,8 +177,8 @@ static void term_update(chardev_t* dev)
 
     if (spin_try_lock(&term->lock)) {
         char buffer[256] = {0};
-        size_t rx_size = EVAL_MIN(ringbuf_space(&term->rx), sizeof(buffer));
-        size_t tx_size = ringbuf_peek(&term->tx, buffer, sizeof(buffer));
+        uint64_t rx_size = EVAL_MIN(ringbuf_space(&term->rx), sizeof(buffer));
+        uint64_t tx_size = ringbuf_peek(&term->tx, buffer, sizeof(buffer));
 
         term_push_io(term, buffer, &rx_size, &tx_size);
         term_process_input(term, buffer, rx_size);
@@ -192,14 +192,14 @@ static void term_update(chardev_t* dev)
     }
 }
 
-static size_t term_read(chardev_t* dev, void* buf, size_t nbytes)
+static uint64_t term_read(chardev_t* dev, void* buf, uint64_t nbytes)
 {
     chardev_term_t* term = dev->data;
     spin_lock(&term->lock);
-    size_t ret = ringbuf_read(&term->rx, buf, nbytes);
+    uint64_t ret = ringbuf_read(&term->rx, buf, nbytes);
     if (!ringbuf_avail(&term->rx)) {
         char buffer[256] = {0};
-        size_t rx_size = sizeof(buffer);
+        uint64_t rx_size = sizeof(buffer);
         term_push_io(term, buffer, &rx_size, NULL);
         ringbuf_write(&term->rx, buffer, rx_size);
     }
@@ -208,14 +208,14 @@ static size_t term_read(chardev_t* dev, void* buf, size_t nbytes)
     return ret;
 }
 
-static size_t term_write(chardev_t* dev, const void* buf, size_t nbytes)
+static uint64_t term_write(chardev_t* dev, const void* buf, uint64_t nbytes)
 {
     chardev_term_t* term = dev->data;
     spin_lock(&term->lock);
-    size_t ret = ringbuf_write(&term->tx, buf, nbytes);
+    uint64_t ret = ringbuf_write(&term->tx, buf, nbytes);
     if (!ringbuf_space(&term->tx)) {
         char buffer[257] = {0};
-        size_t tx_size = ringbuf_peek(&term->tx, buffer, sizeof(buffer) - 1);
+        uint64_t tx_size = ringbuf_peek(&term->tx, buffer, sizeof(buffer) - 1);
         term_push_io(term, buffer, NULL, &tx_size);
         ringbuf_skip(&term->tx, tx_size);
     }

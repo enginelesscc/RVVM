@@ -52,7 +52,7 @@ void rtc_ds1742_update_regs(ds1742_dev_t* rtc)
     rtc->regs[DS1742_REG_YEAR] = bcd_conv_u8(calendar->tm_year % 100);
 }
 
-static bool rtc_ds1742_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool rtc_ds1742_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ds1742_dev_t* rtc = dev->data;
     uint8_t reg = rtc->regs[offset];
@@ -63,7 +63,7 @@ static bool rtc_ds1742_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset
     return true;
 }
 
-static bool rtc_ds1742_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool rtc_ds1742_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ds1742_dev_t* rtc = dev->data;
     UNUSED(size);

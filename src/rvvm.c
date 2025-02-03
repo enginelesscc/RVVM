@@ -30,8 +30,8 @@ static thread_ctx_t* eventloop_thread = NULL;
 
 static inline char* rvvm_merge_strings_internal(const char* str1, const char* str2)
 {
-    size_t str1_len = str1 ? rvvm_strlen(str1) : 0;
-    size_t str2_len = str2 ? rvvm_strlen(str2) : 0;
+    uint64_t str1_len = str1 ? rvvm_strlen(str1) : 0;
+    uint64_t str2_len = str2 ? rvvm_strlen(str2) : 0;
     char* ret = safe_new_arr(char, str1_len + str2_len + 1);
     memcpy(ret, str1, str1_len);
     memcpy(ret + str1_len, str2, str2_len);
@@ -163,7 +163,7 @@ static void rvvm_prepare_fdt(rvvm_machine_t* machine)
 #define RVVM_POWER_ON    1
 #define RVVM_POWER_RESET 2
 
-static size_t rvvm_dtb_addr(rvvm_machine_t* machine, size_t dtb_size)
+static uint64_t rvvm_dtb_addr(rvvm_machine_t* machine, uint64_t dtb_size)
 {
     return align_size_down(machine->mem.size > dtb_size ? machine->mem.size - dtb_size : 0, 8);
 }
@@ -176,7 +176,7 @@ static rvvm_addr_t rvvm_pass_dtb(rvvm_machine_t* machine)
     } else if (machine->dtb_file) {
         // Load DTB from file
         uint32_t dtb_size = rvfilesize(machine->dtb_file);
-        size_t dtb_off = rvvm_dtb_addr(machine, dtb_size);
+        uint64_t dtb_off = rvvm_dtb_addr(machine, dtb_size);
         if (dtb_size < machine->mem.size) {
             rvread(machine->dtb_file, ((uint8_t*)machine->mem.data) + dtb_off, machine->mem.size - dtb_off, 0);
             rvvm_info("Loaded DTB at 0x%08"PRIx64", size %u", machine->mem.addr + dtb_off, dtb_size);
@@ -187,7 +187,7 @@ static rvvm_addr_t rvvm_pass_dtb(rvvm_machine_t* machine)
 #ifdef USE_FDT
         rvvm_prepare_fdt(machine);
         uint32_t dtb_size = fdt_size(machine->fdt);
-        size_t dtb_off = rvvm_dtb_addr(machine, dtb_size);
+        uint64_t dtb_off = rvvm_dtb_addr(machine, dtb_size);
         if (fdt_serialize(machine->fdt, ((uint8_t*)machine->mem.data) + dtb_off, machine->mem.size - dtb_off, 0)) {
             rvvm_info("Generated DTB at 0x%08"PRIx64", size %u", machine->mem.addr + dtb_off, dtb_size);
             return machine->mem.addr + dtb_off;
@@ -217,8 +217,8 @@ static void rvvm_reset_machine_state(rvvm_machine_t* machine)
         bin_objcopy(machine->bootrom_file, machine->mem.data, machine->mem.size, elf);
     }
     if (machine->kernel_file) {
-        size_t kernel_offset = machine->rv64 ? 0x200000 : 0x400000;
-        size_t kernel_size = machine->mem.size > kernel_offset ? machine->mem.size - kernel_offset : 0;
+        uint64_t kernel_offset = machine->rv64 ? 0x200000 : 0x400000;
+        uint64_t kernel_size = machine->mem.size > kernel_offset ? machine->mem.size - kernel_offset : 0;
         bin_objcopy(machine->kernel_file, ((uint8_t*)machine->mem.data) + kernel_offset, kernel_size, elf);
     }
     rvvm_addr_t dtb_addr = rvvm_pass_dtb(machine);
@@ -377,7 +377,7 @@ static void rvvm_set_manual_eventloop(bool manual)
     rvvm_reconfigure_eventloop();
 }
 
-static bool rvvm_reopen_check_size(rvfile_t** dest, const char* path, size_t size)
+static bool rvvm_reopen_check_size(rvfile_t** dest, const char* path, uint64_t size)
 {
     rvclose(*dest);
     if (path) {
@@ -418,7 +418,7 @@ PUBLIC bool rvvm_check_abi(int abi)
  * RVVM Machine Management
  */
 
-PUBLIC rvvm_machine_t* rvvm_create_machine(size_t mem_size, size_t hart_count, const char* isa)
+PUBLIC rvvm_machine_t* rvvm_create_machine(uint64_t mem_size, uint64_t hart_count, const char* isa)
 {
     stacktrace_init();
     // TODO: Proper full ISA string parsing
@@ -470,7 +470,7 @@ PUBLIC rvvm_machine_t* rvvm_create_machine(size_t mem_size, size_t hart_count, c
     if (rvvm_getarg_size("jitcache")) {
         rvvm_set_opt(machine, RVVM_OPT_JIT_CACHE, rvvm_getarg_size("jitcache"));
     } else {
-        size_t jit_cache = 16 << 20;
+        uint64_t jit_cache = 16 << 20;
         if (mem_size >= (512U << 20)) jit_cache = 32 << 20;
         if (mem_size >= (1U << 30))   jit_cache = 64 << 20;
         // Default 16M-64M JIT cache per hart (depends on RAM)
@@ -478,7 +478,7 @@ PUBLIC rvvm_machine_t* rvvm_create_machine(size_t mem_size, size_t hart_count, c
     }
 #endif
 
-    for (size_t i=0; i<hart_count; ++i) {
+    for (uint64_t i=0; i<hart_count; ++i) {
         vector_push_back(machine->harts, riscv_hart_init(machine));
     }
 #ifdef USE_FDT
@@ -521,8 +521,8 @@ PUBLIC bool rvvm_load_bootrom(rvvm_machine_t* machine, const char* path)
 
 PUBLIC bool rvvm_load_kernel(rvvm_machine_t* machine, const char* path)
 {
-    size_t kernel_offset = machine->rv64 ? 0x200000 : 0x400000;
-    size_t kernel_size = machine->mem.size > kernel_offset ? machine->mem.size - kernel_offset : 0;
+    uint64_t kernel_offset = machine->rv64 ? 0x200000 : 0x400000;
+    uint64_t kernel_size = machine->mem.size > kernel_offset ? machine->mem.size - kernel_offset : 0;
     return rvvm_reopen_check_size(&machine->kernel_file, path, kernel_size);
 }
 
@@ -536,7 +536,7 @@ PUBLIC bool rvvm_dump_dtb(rvvm_machine_t* machine, const char* path)
 #ifdef USE_FDT
     rvfile_t* file = rvopen(path, RVFILE_RW | RVFILE_CREAT | RVFILE_TRUNC);
     if (file) {
-        size_t size = fdt_size(rvvm_get_fdt_root(machine));
+        uint64_t size = fdt_size(rvvm_get_fdt_root(machine));
         void* buffer = safe_calloc(size, 1);
         size = fdt_serialize(rvvm_get_fdt_root(machine), buffer, size, 0);
         rvwrite(file, buffer, size, 0);
@@ -685,7 +685,7 @@ PUBLIC void rvvm_free_machine(rvvm_machine_t* machine)
 PUBLIC void rvvm_run_eventloop(void)
 {
     rvvm_set_manual_eventloop(true);
-    rvvm_eventloop((void*)(size_t)1);
+    rvvm_eventloop((void*)(uint64_t)1);
     rvvm_set_manual_eventloop(false);
 }
 
@@ -693,7 +693,7 @@ PUBLIC void rvvm_run_eventloop(void)
  * RVVM Device API
  */
 
-PUBLIC bool rvvm_mmio_none(rvvm_mmio_dev_t* dev, void* dest, size_t offset, uint8_t size)
+PUBLIC bool rvvm_mmio_none(rvvm_mmio_dev_t* dev, void* dest, uint64_t offset, uint8_t size)
 {
     UNUSED(dev);
     UNUSED(offset);
@@ -701,7 +701,7 @@ PUBLIC bool rvvm_mmio_none(rvvm_mmio_dev_t* dev, void* dest, size_t offset, uint
     return true;
 }
 
-PUBLIC bool rvvm_write_ram(rvvm_machine_t* machine, rvvm_addr_t dest, const void* src, size_t size)
+PUBLIC bool rvvm_write_ram(rvvm_machine_t* machine, rvvm_addr_t dest, const void* src, uint64_t size)
 {
     if (dest < machine->mem.addr
     || (dest - machine->mem.addr + size) > machine->mem.size) return false;
@@ -710,7 +710,7 @@ PUBLIC bool rvvm_write_ram(rvvm_machine_t* machine, rvvm_addr_t dest, const void
     return true;
 }
 
-PUBLIC bool rvvm_read_ram(rvvm_machine_t* machine, void* dest, rvvm_addr_t src, size_t size)
+PUBLIC bool rvvm_read_ram(rvvm_machine_t* machine, void* dest, rvvm_addr_t src, uint64_t size)
 {
     if (src < machine->mem.addr
     || (src - machine->mem.addr + size) > machine->mem.size) return false;
@@ -718,7 +718,7 @@ PUBLIC bool rvvm_read_ram(rvvm_machine_t* machine, void* dest, rvvm_addr_t src, 
     return true;
 }
 
-PUBLIC void* rvvm_get_dma_ptr(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size)
+PUBLIC void* rvvm_get_dma_ptr(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size)
 {
     if (addr < machine->mem.addr
     || (addr - machine->mem.addr + size) > machine->mem.size) return NULL;
@@ -726,12 +726,12 @@ PUBLIC void* rvvm_get_dma_ptr(rvvm_machine_t* machine, rvvm_addr_t addr, size_t 
     return ((uint8_t*)machine->mem.data) + (addr - machine->mem.addr);
 }
 
-static inline bool rvvm_mmio_overlap_check(rvvm_addr_t addr1, size_t size1, rvvm_addr_t addr2, size_t size2)
+static inline bool rvvm_mmio_overlap_check(rvvm_addr_t addr1, uint64_t size1, rvvm_addr_t addr2, uint64_t size2)
 {
     return addr1 < (addr2 + size2) && addr2 < (addr1 + size1);
 }
 
-PUBLIC rvvm_addr_t rvvm_mmio_zone_auto(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size)
+PUBLIC rvvm_addr_t rvvm_mmio_zone_auto(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size)
 {
     // Regions of size 0 are ignored (those are non-IO placeholders)
     if (size) {
@@ -779,7 +779,7 @@ PUBLIC rvvm_mmio_dev_t* rvvm_attach_mmio(rvvm_machine_t* machine, const rvvm_mmi
         rvvm_mmio_free(dev);
         return NULL;
     }
-    if (dev->mapping && ((dev->addr & 0xFFF) ^ (((size_t)dev->mapping) & 0xFFF))) {
+    if (dev->mapping && ((dev->addr & 0xFFF) ^ (((uint64_t)dev->mapping) & 0xFFF))) {
         // Misaligned mappings harm performance when used with KVM or shadow pagetable accel
         rvvm_warn("MMIO device \"%s\" has misaligned mapping, expect lower perf",
                   dev->type ? dev->type->name : "null");
@@ -961,7 +961,7 @@ PUBLIC bool rvvm_fdt_describe_irq(struct fdt_node* node, rvvm_intc_t* intc, rvvm
 #ifdef USE_FDT
     if (intc) {
         uint32_t cells[8] = {0};
-        size_t count = rvvm_fdt_irq_cells(intc, irq, cells, STATIC_ARRAY_SIZE(cells));
+        uint64_t count = rvvm_fdt_irq_cells(intc, irq, cells, STATIC_ARRAY_SIZE(cells));
         fdt_node_add_prop_u32(node, "interrupt-parent", rvvm_fdt_intc_phandle(intc));
         fdt_node_add_prop_cells(node, "interrupts", cells, count);
         return true;
@@ -982,7 +982,7 @@ PUBLIC uint32_t rvvm_fdt_intc_phandle(rvvm_intc_t* intc)
 }
 
 //! \brief Get interrupts-extended FDT cells for an IRQ
-PUBLIC size_t rvvm_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, size_t size)
+PUBLIC uint64_t rvvm_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, uint64_t size)
 {
     if (intc && intc->fdt_irq_cells) {
         return intc->fdt_irq_cells(intc, irq, cells, size);
@@ -1010,7 +1010,7 @@ PUBLIC rvvm_machine_t* rvvm_create_userland(const char* isa)
     // Bypass entire process memory except the NULL page
     // RVVM expects mem.data to be non-NULL, let's leave that for now
     machine->mem.addr = 0x1000;
-    machine->mem.size = (size_t)-0x1000ULL;
+    machine->mem.size = (uint64_t)-0x1000ULL;
     machine->mem.data = (void*)0x1000;
     machine->rv64 = rv64;
 
@@ -1025,7 +1025,7 @@ PUBLIC rvvm_machine_t* rvvm_create_userland(const char* isa)
     return machine;
 }
 
-PUBLIC void rvvm_flush_icache(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size)
+PUBLIC void rvvm_flush_icache(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size)
 {
     // WIP, issue a total cache flush on all harts
     // Needs improvements in RVJIT
@@ -1091,7 +1091,7 @@ PUBLIC rvvm_addr_t rvvm_run_user_thread(rvvm_hart_t* thread)
     return riscv_hart_run_userland(thread);
 }
 
-PUBLIC rvvm_addr_t rvvm_read_cpu_reg(rvvm_hart_t* thread, size_t reg_id)
+PUBLIC rvvm_addr_t rvvm_read_cpu_reg(rvvm_hart_t* thread, uint64_t reg_id)
 {
     if (reg_id < (RVVM_REGID_X0 + 32)) {
         return thread->registers[reg_id - RVVM_REGID_X0];
@@ -1113,7 +1113,7 @@ PUBLIC rvvm_addr_t rvvm_read_cpu_reg(rvvm_hart_t* thread, size_t reg_id)
     }
 }
 
-PUBLIC void rvvm_write_cpu_reg(rvvm_hart_t* thread, size_t reg_id, rvvm_addr_t reg)
+PUBLIC void rvvm_write_cpu_reg(rvvm_hart_t* thread, uint64_t reg_id, rvvm_addr_t reg)
 {
     if (reg_id < (RVVM_REGID_X0 + 32)) {
         thread->registers[reg_id - RVVM_REGID_X0] = reg;

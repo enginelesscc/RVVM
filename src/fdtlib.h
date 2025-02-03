@@ -66,7 +66,7 @@ PUBLIC void fdt_node_add_prop_reg(struct fdt_node* node, const char* name, uint6
 PUBLIC void* fdt_node_get_prop_data(struct fdt_node* node, const char* name);
 
 // Returns underlying property size
-PUBLIC size_t fdt_node_get_prop_size(struct fdt_node* node, const char* name);
+PUBLIC uint64_t fdt_node_get_prop_size(struct fdt_node* node, const char* name);
 
 // Delete property
 PUBLIC bool fdt_node_del_prop(struct fdt_node* node, const char* name);
@@ -79,10 +79,10 @@ PUBLIC bool fdt_node_del_prop(struct fdt_node* node, const char* name);
 PUBLIC void fdt_node_free(struct fdt_node* node);
 
 // Returns required buffer size for serializing
-PUBLIC size_t fdt_size(struct fdt_node* node);
+PUBLIC uint64_t fdt_size(struct fdt_node* node);
 
 // Serialize DTB into buffer, returns 0 when there's insufficient space
 // Returns required buffer size when buffer == NULL
-PUBLIC size_t fdt_serialize(struct fdt_node* node, void* buffer, size_t size, uint32_t boot_cpuid);
+PUBLIC uint64_t fdt_serialize(struct fdt_node* node, void* buffer, uint64_t size, uint32_t boot_cpuid);
 
 #endif

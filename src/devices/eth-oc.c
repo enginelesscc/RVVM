@@ -178,14 +178,14 @@ static void ethoc_interrupt(ethoc_dev_t* eth, uint8_t int_num)
 static void ethoc_process_tx(ethoc_dev_t* eth)
 {
     // Loop until the queue is drained
-    for (size_t i = 0; i < ETHOC_BD_COUNT; ++i) {
+    for (uint64_t i = 0; i < ETHOC_BD_COUNT; ++i) {
         ethoc_bd_t* txbd = &eth->bdbuf[eth->cur_txbd];
         if (!(eth->moder & ETHOC_MODER_TXEN) || !(txbd->data & ETHOC_TXBD_RD)) {
             // Nothing to send
             return;
         }
 
-        size_t size = (txbd->data >> 16) & 0xFFFF;
+        uint64_t size = (txbd->data >> 16) & 0xFFFF;
         void* dma = rvvm_get_dma_ptr(eth->machine, txbd->ptr, size);
         if (dma) {
             int ret = tap_send(eth->tap, dma, size);
@@ -212,7 +212,7 @@ static void ethoc_process_tx(ethoc_dev_t* eth)
     }
 }
 
-static bool ethoc_feed_rx(void* net_dev, const void* data, size_t size)
+static bool ethoc_feed_rx(void* net_dev, const void* data, uint64_t size)
 {
     ethoc_dev_t* eth = net_dev;
 
@@ -229,7 +229,7 @@ static bool ethoc_feed_rx(void* net_dev, const void* data, size_t size)
     }
     flags &= ~ETHOC_RXBD_E;
 
-    size_t f_size = size + 4;
+    uint64_t f_size = size + 4;
     uint32_t size_lim = atomic_load_uint32(&eth->packetlen);
     uint8_t* dma = rvvm_get_dma_ptr(eth->machine, atomic_load_uint32(&rxbd->ptr), f_size);
     if (dma == NULL || f_size > (size_lim & 0xFFFF)) {
@@ -257,7 +257,7 @@ static bool ethoc_feed_rx(void* net_dev, const void* data, size_t size)
     return true;
 }
 
-static bool ethoc_data_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ethoc_data_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ethoc_dev_t* eth = dev->data;
     uint32_t val = 0;
@@ -320,7 +320,7 @@ static bool ethoc_data_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset
             break;
         default:
             if (offset >= ETHOC_BD_ADDR && offset < ETHOC_BD_ADDR + ETHOC_BD_BUFSIZ) {
-                size_t bdid = (offset - ETHOC_BD_ADDR) >> 3;
+                uint64_t bdid = (offset - ETHOC_BD_ADDR) >> 3;
                 ethoc_bd_t* bd = &eth->bdbuf[bdid];
                 if (offset & 4) {
                     val = atomic_load_uint32_relax(&bd->ptr);
@@ -336,7 +336,7 @@ static bool ethoc_data_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset
     return true;
 }
 
-static bool ethoc_data_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ethoc_data_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ethoc_dev_t* eth = dev->data;
     uint32_t val = read_uint32_le(data);
@@ -430,7 +430,7 @@ static bool ethoc_data_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offse
             break;
         default:
             if (offset >= ETHOC_BD_ADDR && offset < ETHOC_BD_ADDR + ETHOC_BD_BUFSIZ) {
-                size_t bdid = (offset - ETHOC_BD_ADDR) >> 3;
+                uint64_t bdid = (offset - ETHOC_BD_ADDR) >> 3;
                 ethoc_bd_t* bd = &eth->bdbuf[bdid];
                 if (offset & 4) {
                     atomic_store_uint32_relax(&bd->ptr, val);

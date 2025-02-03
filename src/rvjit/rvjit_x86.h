@@ -70,7 +70,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #define VM_PTR_REG X86_ECX
 #endif
 
-static inline size_t rvjit_native_default_hregmask(void)
+static inline uint64_t rvjit_native_default_hregmask(void)
 {
 #ifdef RVJIT_NATIVE_64BIT
     return rvjit_hreg_mask(X64_RAX) |
@@ -92,7 +92,7 @@ static inline size_t rvjit_native_default_hregmask(void)
 #endif
 }
 
-static inline size_t rvjit_native_abireclaim_hregmask(void)
+static inline uint64_t rvjit_native_abireclaim_hregmask(void)
 {
 #ifdef RVJIT_NATIVE_64BIT
     return rvjit_hreg_mask(X64_RBX) |
@@ -115,7 +115,7 @@ static inline size_t rvjit_native_abireclaim_hregmask(void)
 #endif
 }
 
-static inline size_t rvjit_native_default_fpu_regmask(void)
+static inline uint64_t rvjit_native_default_fpu_regmask(void)
 {
 #ifdef RVJIT_ABI_SYSV
     return 0xFFFF; // All XMM registers are caller-saved
@@ -146,8 +146,8 @@ static inline bool x86_is_byte_imm(int32_t imm)
 static inline void rvjit_x86_1byte_1reg_op(rvjit_block_t* block, uint8_t opcode, regid_t reg)
 {
     uint8_t code[2] = { X64_REX_B, opcode | (reg & 0x7), };
-    size_t size = (reg < X64_R8) ? 1 : 2;
-    size_t off = 2 - size;
+    uint64_t size = (reg < X64_R8) ? 1 : 2;
+    uint64_t off = 2 - size;
     rvjit_put_code(block, code + off, size);
 }
 
@@ -236,7 +236,7 @@ static inline void rvjit_x86_r_imm_op(rvjit_block_t* block, uint8_t opcode, regi
     uint8_t code[7] = { 0, X86_IMM_OP, opcode | (reg & 0x7),  };
     if (bits_64) code[0] = X64_REX_W;
     if (reg >= X64_R8) code[0] |= X64_REX_B;
-    size_t insn_size = code[0] ? 4 : 3;
+    uint64_t insn_size = code[0] ? 4 : 3;
     if (x86_is_byte_imm(imm)) {
         code[1] |= 0x02; // IMM length override
         write_uint8(code + 3, imm);
@@ -960,7 +960,7 @@ static inline void rvjit_x86_div_rem(rvjit_block_t* block, bool rem, regid_t hrd
         //while (cmp_reg == hrds || cmp_reg == hrs1 || cmp_reg == hrs2) cmp_reg++;
         //rvjit_native_push(block, cmp_reg);
         cmp_reg = rvjit_claim_hreg(block);
-        rvjit_native_setregw(block, cmp_reg, (size_t)0x8000000000000000ULL);
+        rvjit_native_setregw(block, cmp_reg, (uint64_t)0x8000000000000000ULL);
         l1 = rvjit_x86_branch(block, X86_BNE, hrs2, cmp_reg, BRANCH_NEW, false, bits_64);
     } else {
         l1 = rvjit_x86_branch_imm(block, X86_BNE, hrs2, 0x80000000U, BRANCH_NEW, false, bits_64);
@@ -1012,7 +1012,7 @@ static inline void rvjit_x86_div_rem(rvjit_block_t* block, bool rem, regid_t hrd
  * Linker routines
  */
 
-static inline size_t rvjit_x86_cmp_bnez_mem(rvjit_block_t* block, regid_t addr, bool bits_64)
+static inline uint64_t rvjit_x86_cmp_bnez_mem(rvjit_block_t* block, regid_t addr, bool bits_64)
 {
     uint8_t code[4] = { 0, 0x83, 0x38 | (addr & 0x7), 0, };
     if (bits_64) code[0] |= X64_REX_W;
@@ -1041,7 +1041,7 @@ static inline void rvjit_patchable_ret(rvjit_block_t* block)
 // Used to check interrupts in block linkage
 static inline void rvjit_tail_bnez(rvjit_block_t* block, regid_t addr, int32_t offset)
 {
-    size_t cmp_size = rvjit_x86_cmp_bnez_mem(block, addr, false);
+    uint64_t cmp_size = rvjit_x86_cmp_bnez_mem(block, addr, false);
     uint8_t code[6] = { 0x0F, 0x85, };
     write_uint32_le_m(code + 2, ((uint32_t)offset) - (6 + cmp_size));
     rvjit_put_code(block, code, 6);
@@ -1078,7 +1078,7 @@ static inline void rvjit_jmp_reg(rvjit_block_t* block, regid_t reg)
  */
 static inline void rvjit_x86_memref_addi(rvjit_block_t* block, regid_t addr, int32_t offset, int32_t imm, bool bits_64)
 {
-    size_t inst_size = 3;
+    uint64_t inst_size = 3;
     uint8_t code[11] = {0x00, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     code[2] = addr & 0x7;
     if (bits_64) code[0] |= X64_REX_W;

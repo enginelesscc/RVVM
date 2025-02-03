@@ -24,9 +24,9 @@ static rvvm_mmio_type_t aclint_mtimer_dev_type = {
     .name = "riscv_aclint_mtimer",
 };
 
-static bool aclint_mswi_read(rvvm_mmio_dev_t* device, void* data, size_t offset, uint8_t size)
+static bool aclint_mswi_read(rvvm_mmio_dev_t* device, void* data, uint64_t offset, uint8_t size)
 {
-    size_t hartid = offset >> 2;
+    uint64_t hartid = offset >> 2;
     UNUSED(size);
 
     if (hartid < vector_size(device->machine->harts)) {
@@ -38,9 +38,9 @@ static bool aclint_mswi_read(rvvm_mmio_dev_t* device, void* data, size_t offset,
     return false;
 }
 
-static bool aclint_mswi_write(rvvm_mmio_dev_t* device, void* data, size_t offset, uint8_t size)
+static bool aclint_mswi_write(rvvm_mmio_dev_t* device, void* data, uint64_t offset, uint8_t size)
 {
-    size_t hartid = offset >> 2;
+    uint64_t hartid = offset >> 2;
     UNUSED(size);
 
     if (hartid < vector_size(device->machine->harts)) {
@@ -56,9 +56,9 @@ static bool aclint_mswi_write(rvvm_mmio_dev_t* device, void* data, size_t offset
     return false;
 }
 
-static bool aclint_mtimer_read(rvvm_mmio_dev_t* device, void* data, size_t offset, uint8_t size)
+static bool aclint_mtimer_read(rvvm_mmio_dev_t* device, void* data, uint64_t offset, uint8_t size)
 {
-    size_t hartid = offset >> 3;
+    uint64_t hartid = offset >> 3;
     UNUSED(size);
 
     if (offset == 0x7FF8) {
@@ -75,9 +75,9 @@ static bool aclint_mtimer_read(rvvm_mmio_dev_t* device, void* data, size_t offse
     return false;
 }
 
-static bool aclint_mtimer_write(rvvm_mmio_dev_t* device, void* data, size_t offset, uint8_t size)
+static bool aclint_mtimer_write(rvvm_mmio_dev_t* device, void* data, uint64_t offset, uint8_t size)
 {
-    size_t hartid = offset >> 3;
+    uint64_t hartid = offset >> 3;
     UNUSED(size);
 
     if (offset == 0x7FF8) {

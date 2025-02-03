@@ -37,18 +37,18 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #include <linux/vfio.h>
 
-static size_t vfio_pci_sysfs_path(char* buffer, size_t size, const char* pci_id, const char* suffix)
+static uint64_t vfio_pci_sysfs_path(char* buffer, uint64_t size, const char* pci_id, const char* suffix)
 {
-    size_t len = rvvm_strlcpy(buffer, "/sys/bus/pci/devices/", size);
+    uint64_t len = rvvm_strlcpy(buffer, "/sys/bus/pci/devices/", size);
     len += rvvm_strlcpy(buffer + len, pci_id, size - len);
     return len + rvvm_strlcpy(buffer + len, suffix, size - len);
 }
 
-static size_t vfio_rw_file(const char* path, void* rdbuf, const void* wrbuf, size_t size)
+static uint64_t vfio_rw_file(const char* path, void* rdbuf, const void* wrbuf, uint64_t size)
 {
     int fd = open(path, (rdbuf ? O_RDONLY : 0) | (wrbuf ? O_WRONLY : 0) | O_CLOEXEC);
-    size_t ret = fd >= 0;
-    if (wrbuf && ret) ret = (size_t)write(fd, wrbuf, size) == size;
+    uint64_t ret = fd >= 0;
+    if (wrbuf && ret) ret = (uint64_t)write(fd, wrbuf, size) == size;
     if (rdbuf && ret) ret = read(fd, rdbuf, size);
     if (fd >= 0) close(fd);
     return ret;
@@ -66,7 +66,7 @@ static bool vfio_bind_vfio(const char* pci_id)
     char path[256] = {0};
     char ven_dev[256] = {0};
     vfio_pci_sysfs_path(path, sizeof(path), pci_id, "/vendor");
-    size_t len = vfio_rw_file(path, ven_dev, NULL, sizeof(ven_dev));
+    uint64_t len = vfio_rw_file(path, ven_dev, NULL, sizeof(ven_dev));
     len += rvvm_strlcpy(ven_dev + len, " ", sizeof(ven_dev) - len);
     vfio_pci_sysfs_path(path, sizeof(path), pci_id, "/device");
     len += vfio_rw_file(path, ven_dev + len, NULL, sizeof(ven_dev) - len);
@@ -112,7 +112,7 @@ static int vfio_open_group(const char* pci_id)
 {
     uint32_t group = vfio_get_iommu_group(pci_id);
     char path[256] = "/dev/vfio/";
-    size_t len = rvvm_strlen(path);
+    uint64_t len = rvvm_strlen(path);
     int_to_str_dec(path + len, sizeof(path) - len, group);
     int fd = open(path, O_RDWR | O_CLOEXEC);
     return fd;
@@ -178,9 +178,9 @@ static rvvm_mmio_type_t vfio_bar_type = {
 
 static void vfio_dev_free(vfio_dev_t* vfio)
 {
-    for (size_t i = 0; i < PCI_FUNC_BARS; ++i) {
+    for (uint64_t i = 0; i < PCI_FUNC_BARS; ++i) {
         void*  bar_ptr  = vfio->func_desc.bar[i].mapping;
-        size_t bar_size = vfio->func_desc.bar[i].size;
+        uint64_t bar_size = vfio->func_desc.bar[i].size;
         if (bar_ptr && bar_size) {
             munmap(bar_ptr, bar_size);
         }
@@ -217,14 +217,14 @@ static rvvm_mmio_type_t vfio_dev_type = {
     .remove = vfio_dev_remove,
 };
 
-static bool vfio_map_dma(vfio_dev_t* vfio, rvvm_machine_t* machine, rvvm_addr_t mem_base, size_t mem_size)
+static bool vfio_map_dma(vfio_dev_t* vfio, rvvm_machine_t* machine, rvvm_addr_t mem_base, uint64_t mem_size)
 {
     struct vfio_iommu_type1_dma_map dma_map = {
         .argsz = sizeof(struct vfio_iommu_type1_dma_map),
         .flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE,
         .iova = mem_base,
         .size = mem_size,
-        .vaddr = (size_t)rvvm_get_dma_ptr(machine, mem_base, mem_size),
+        .vaddr = (uint64_t)rvvm_get_dma_ptr(machine, mem_base, mem_size),
     };
     return ioctl(vfio->container, VFIO_IOMMU_MAP_DMA, &dma_map) == 0;
 }
@@ -249,7 +249,7 @@ static bool vfio_setup_device_irqs(vfio_dev_t* vfio, uint32_t irqtype)
         }
     }
 
-    size_t irq_size = sizeof(struct vfio_irq_set) + sizeof(int);
+    uint64_t irq_size = sizeof(struct vfio_irq_set) + sizeof(int);
     struct vfio_irq_set* irq_set = safe_calloc(irq_size, 1);
     irq_set->argsz = irq_size;
     irq_set->flags = VFIO_IRQ_SET_DATA_EVENTFD | VFIO_IRQ_SET_ACTION_TRIGGER;
@@ -308,7 +308,7 @@ static bool vfio_try_attach(vfio_dev_t* vfio, rvvm_machine_t* machine, const cha
         const rvvm_addr_t msi_x86_end = 0xFEF00000;
         rvvm_info("Workaround reserved x86 MSI IRQ vector by splitting DMA region");
         if (mem_base < msi_x86_low) {
-            size_t low_size = EVAL_MIN(mem_size, msi_x86_low - mem_base);
+            uint64_t low_size = EVAL_MIN(mem_size, msi_x86_low - mem_base);
             if (!vfio_map_dma(vfio, machine, mem_base, low_size)) {
                 rvvm_error("Failed to set up VFIO DMA: %s", strerror(errno));
                 rvvm_error("This is likely caused by reserved mappings on your host overlapping guest RAM");
@@ -316,7 +316,7 @@ static bool vfio_try_attach(vfio_dev_t* vfio, rvvm_machine_t* machine, const cha
             }
         }
         if (mem_base + mem_size > msi_x86_end) {
-            size_t high_size = (mem_base + mem_size) - msi_x86_end;
+            uint64_t high_size = (mem_base + mem_size) - msi_x86_end;
             if (!vfio_map_dma(vfio, machine, msi_x86_end, high_size)) {
                 rvvm_error("Failed to set up VFIO DMA: %s", strerror(errno));
                 rvvm_error("This is likely caused by reserved mappings on your host overlapping guest RAM");

@@ -94,7 +94,7 @@ typedef struct rvvm_machine_t rvvm_machine_t;
 //! \param hart_count Amount of HARTs (cores), should be >=1
 //! \param isa        String describing the CPU instruction set, or NULL to pick rv64
 //! \return Valid machine handle, or NULL on failure
-PUBLIC rvvm_machine_t* rvvm_create_machine(size_t mem_size, size_t hart_count, const char* isa);
+PUBLIC rvvm_machine_t* rvvm_create_machine(uint64_t mem_size, uint64_t hart_count, const char* isa);
 
 //! \brief Set a new kernel cmdline for a manually loaded kernel
 PUBLIC void rvvm_set_cmdline(rvvm_machine_t* machine, const char* str);
@@ -159,10 +159,10 @@ struct fdt_node;
 typedef struct rvvm_mmio_dev_t rvvm_mmio_dev_t;
 
 //! MMIO read/write handler, offset is always aligned to operation size
-typedef bool (*rvvm_mmio_handler_t)(rvvm_mmio_dev_t* dev, void* dest, size_t offset, uint8_t size);
+typedef bool (*rvvm_mmio_handler_t)(rvvm_mmio_dev_t* dev, void* dest, uint64_t offset, uint8_t size);
 
 //! Dummy MMIO read/write: Reads zeros, ignores writes, never faults
-PUBLIC bool rvvm_mmio_none(rvvm_mmio_dev_t* dev, void* dest, size_t offset, uint8_t size);
+PUBLIC bool rvvm_mmio_none(rvvm_mmio_dev_t* dev, void* dest, uint64_t offset, uint8_t size);
 
 //! Interrupt controller handle
 typedef struct rvvm_intc_t rvvm_intc_t;
@@ -198,7 +198,7 @@ typedef struct {
 //! MMIO region description
 struct rvvm_mmio_dev_t {
     rvvm_addr_t addr;        //!< MMIO region address in machine physical memory
-    size_t      size;        //!< MMIO region size, zero means a device placeholder
+    uint64_t      size;        //!< MMIO region size, zero means a device placeholder
     void*       data;        //!< Device-specific data pointer, freed on removal if type->remove is NULL
     void*       mapping;     //!< Directly mapped host memory region, read/write called on dirtying if non-NULL
     rvvm_machine_t* machine; //!< Owner machine handle
@@ -217,18 +217,18 @@ struct rvvm_mmio_dev_t {
 };
 
 //! \brief  Writes data to machine physical memory
-PUBLIC bool rvvm_write_ram(rvvm_machine_t* machine, rvvm_addr_t dest, const void* src, size_t size);
+PUBLIC bool rvvm_write_ram(rvvm_machine_t* machine, rvvm_addr_t dest, const void* src, uint64_t size);
 
 //! \brief  Reads data from machine physical memory
-PUBLIC bool rvvm_read_ram(rvvm_machine_t* machine, void* dest, rvvm_addr_t src, size_t size);
+PUBLIC bool rvvm_read_ram(rvvm_machine_t* machine, void* dest, rvvm_addr_t src, uint64_t size);
 
 //! \brief  Directly access machine physical memory (DMA)
 //! \return Pointer to machine DMA region, or NULL on failure
-PUBLIC void* rvvm_get_dma_ptr(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size);
+PUBLIC void* rvvm_get_dma_ptr(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size);
 
 //! \brief  Get usable address for a MMIO region
 //! \return Usable physical memory address, which is equal to addr if the requested region is free
-PUBLIC rvvm_addr_t rvvm_mmio_zone_auto(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size);
+PUBLIC rvvm_addr_t rvvm_mmio_zone_auto(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size);
 
 //! \brief   Attach (custom-written) MMIO device to the machine by it's description, free it's state on failure
 //! \param   mmio MMIO region description, doesn't need to be kept
@@ -286,7 +286,7 @@ struct rvvm_intc_t {
     bool (*lower_irq)(rvvm_intc_t* intc, rvvm_irq_t irq);
     rvvm_irq_t (*alloc_irq)(rvvm_intc_t* intc);
     uint32_t (*fdt_phandle)(rvvm_intc_t* intc);
-    size_t (*fdt_irq_cells)(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, size_t size);
+    uint64_t (*fdt_irq_cells)(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, uint64_t size);
 };
 
 //! \brief Allocate a new IRQ pin on the IRQ controller
@@ -306,7 +306,7 @@ PUBLIC bool rvvm_fdt_describe_irq(struct fdt_node* node, rvvm_intc_t* intc, rvvm
 PUBLIC uint32_t rvvm_fdt_intc_phandle(rvvm_intc_t* intc);
 
 //! \brief Get interrupts-extended FDT cells for an IRQ
-PUBLIC size_t rvvm_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, size_t size);
+PUBLIC uint64_t rvvm_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, uint64_t size);
 
 /** @}*/
 
@@ -338,7 +338,7 @@ typedef struct rvvm_hart_t rvvm_hart_t;
 PUBLIC rvvm_machine_t* rvvm_create_userland(const char* isa);
 
 //! \brief Flush instruction cache for a specified memory range
-PUBLIC void rvvm_flush_icache(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size);
+PUBLIC void rvvm_flush_icache(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size);
 
 //! \brief Create userland process thread
 PUBLIC rvvm_hart_t* rvvm_create_user_thread(rvvm_machine_t* machine);
@@ -351,10 +351,10 @@ PUBLIC void rvvm_free_user_thread(rvvm_hart_t* thread);
 PUBLIC rvvm_addr_t rvvm_run_user_thread(rvvm_hart_t* thread);
 
 //! \brief Read thread context register
-PUBLIC rvvm_addr_t rvvm_read_cpu_reg(rvvm_hart_t* thread, size_t reg_id);
+PUBLIC rvvm_addr_t rvvm_read_cpu_reg(rvvm_hart_t* thread, uint64_t reg_id);
 
 //! \brief Write thread context register
-PUBLIC void rvvm_write_cpu_reg(rvvm_hart_t* thread, size_t reg_id, rvvm_addr_t reg);
+PUBLIC void rvvm_write_cpu_reg(rvvm_hart_t* thread, uint64_t reg_id, rvvm_addr_t reg);
 
 /** @}*/
 

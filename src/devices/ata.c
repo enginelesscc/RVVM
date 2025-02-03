@@ -126,12 +126,12 @@ static inline uint64_t ata_get_seek(ata_dev_t* ata)
     return ata->lba << ATA_SECTOR_SHIFT;
 }
 
-static void ata_copy_id_string(uint8_t* buf, const char* str, size_t size)
+static void ata_copy_id_string(uint8_t* buf, const char* str, uint64_t size)
 {
     // Reverse each byte pair since they are little-endian words, pad with spaces
-    size_t len = rvvm_strnlen(str, size);
+    uint64_t len = rvvm_strnlen(str, size);
     memset(buf, ' ', size);
-    for (size_t i = 0; i < len; ++i) {
+    for (uint64_t i = 0; i < len; ++i) {
         buf[i ^ 1ULL] = str[i];
     }
 }
@@ -251,7 +251,7 @@ static void ata_handle_cmd(ata_dev_t* ata, uint8_t cmd)
     }
 }
 
-static bool ata_data_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_data_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ata_dev_t* ata = dev->data;
     memset(data, 0, size);
@@ -308,7 +308,7 @@ static bool ata_data_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8
     return true;
 }
 
-static bool ata_data_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_data_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ata_dev_t* ata = dev->data;
 
@@ -368,7 +368,7 @@ static bool ata_data_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint
     return true;
 }
 
-static bool ata_ctl_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_ctl_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ata_dev_t* ata = dev->data;
     memset(data, 0, size);
@@ -386,7 +386,7 @@ static bool ata_ctl_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_
     return true;
 }
 
-static bool ata_ctl_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_ctl_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ata_dev_t* ata = dev->data;
     UNUSED(size);
@@ -528,12 +528,12 @@ static void ata_process_prdt(ata_dev_t* ata)
 {
     rvvm_addr_t prdt_addr = atomic_load_uint32(&ata->prdt_addr);
     bool is_read = !!(atomic_load_uint32(&ata->bmdma_command) & ATA_BMDMA_COMMAND_READ);
-    size_t to_process = ata->sectcount << ATA_SECTOR_SHIFT;
-    size_t processed = 0;
+    uint64_t to_process = ata->sectcount << ATA_SECTOR_SHIFT;
+    uint64_t processed = 0;
 
     // According to spec, maximum amount of PRDT entries is 64k
     // This should prevent malicious guests from hanging up the thread
-    for (size_t i = 0; i < 0x10000; ++i) {
+    for (uint64_t i = 0; i < 0x10000; ++i) {
         // Read PRD
         const uint8_t* prd = pci_get_dma_ptr(ata->pci_func, prdt_addr, 8);
         if (!prd) {
@@ -601,7 +601,7 @@ static void* ata_prdt_io_worker(void* arg)
     return NULL;
 }
 
-static bool ata_pci_bmdma_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_pci_bmdma_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ata_dev_t* ata = dev->data;
 
@@ -623,7 +623,7 @@ static bool ata_pci_bmdma_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, 
     return true;
 }
 
-static bool ata_pci_bmdma_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_pci_bmdma_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ata_dev_t* ata = dev->data;
 
@@ -651,12 +651,12 @@ static bool ata_pci_bmdma_write(rvvm_mmio_dev_t* dev, void* data, size_t offset,
     return true;
 }
 
-static bool ata_pci_ctl_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_pci_ctl_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     return ata_ctl_read(dev, data, offset - 2, size);
 }
 
-static bool ata_pci_ctl_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ata_pci_ctl_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     return ata_ctl_write(dev, data, offset - 2, size);
 }

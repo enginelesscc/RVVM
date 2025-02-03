@@ -27,8 +27,8 @@ typedef struct {
     // Chosen thread via 'H' packet
     rvvm_hart_t* hart;
 
-    size_t recv_size;
-    size_t send_size;
+    uint64_t recv_size;
+    uint64_t send_size;
     char   recv_buffer[GDB_MAX_PKTSIZE];
     char   send_buffer[GDB_MAX_PKTSIZE];
 } gdb_client_t;
@@ -61,17 +61,17 @@ static void gdb_byte_to_hex(char* hex, uint8_t byte)
     hex[1] = gdb_hexify(byte & 0xF);
 }
 
-static size_t gdb_bytes_to_hex_le(char* hex, const void* data, size_t bytes)
+static uint64_t gdb_bytes_to_hex_le(char* hex, const void* data, uint64_t bytes)
 {
-    for (size_t i = 0; i < bytes; ++i) {
+    for (uint64_t i = 0; i < bytes; ++i) {
         gdb_byte_to_hex(hex + (i * 2), ((uint8_t*)data)[i]);
     }
     return bytes * 2;
 }
 
-static size_t gdb_value_to_hex_le(char* hex, uint64_t val, size_t bytes)
+static uint64_t gdb_value_to_hex_le(char* hex, uint64_t val, uint64_t bytes)
 {
-    for (size_t i = 0; i < bytes; ++i) {
+    for (uint64_t i = 0; i < bytes; ++i) {
         gdb_byte_to_hex(hex + (i * 2), val >> (i * 8));
     }
     return bytes * 2;
@@ -90,17 +90,17 @@ static uint8_t gdb_hex_to_byte(const char* hex)
     return (gdb_hex_nibble(hex[0]) << 4) | gdb_hex_nibble(hex[1]);
 }
 
-static void gdb_hex_to_bytes_le(void* data, const char* hex, size_t bytes)
+static void gdb_hex_to_bytes_le(void* data, const char* hex, uint64_t bytes)
 {
-    for (size_t i = 0; i < bytes; ++i) {
+    for (uint64_t i = 0; i < bytes; ++i) {
         ((uint8_t*)data)[i] = gdb_hex_to_byte(hex + (i * 2));
     }
 }
 
-static uint64_t gdb_hex_to_value_le(const char* hex, size_t bytes)
+static uint64_t gdb_hex_to_value_le(const char* hex, uint64_t bytes)
 {
     uint64_t val = 0;
-    for (size_t i = bytes; i--;) {
+    for (uint64_t i = bytes; i--;) {
         val = (val << 8) | gdb_hex_to_byte(hex + (i * 2));
     }
     return val;
@@ -123,7 +123,7 @@ static void gdb_resend_reply(gdb_client_t* gdb)
 
 static void gdb_send_buffer_append(gdb_client_t* gdb, const char* str)
 {
-    size_t size = sizeof(gdb->send_buffer) - gdb->send_size;
+    uint64_t size = sizeof(gdb->send_buffer) - gdb->send_size;
     gdb->send_size += rvvm_strlcpy(gdb->send_buffer + gdb->send_size, str, size);
 }
 
@@ -138,7 +138,7 @@ static void gdb_reply_str(gdb_client_t* gdb, const char* str)
     gdb_send_buffer_append(gdb, "#");
 
     // Calculate checksum
-    for (size_t i = 0; str[i]; ++i) {
+    for (uint64_t i = 0; str[i]; ++i) {
         csum += (uint8_t)str[i];
     }
 
@@ -150,7 +150,7 @@ static void gdb_reply_str(gdb_client_t* gdb, const char* str)
     rvvm_debug("Reply: %s", str);
 }
 
-static void gdb_consume_bytes(gdb_client_t* gdb, size_t bytes)
+static void gdb_consume_bytes(gdb_client_t* gdb, uint64_t bytes)
 {
     if (bytes > gdb->recv_size) {
         bytes = gdb->recv_size;
@@ -218,8 +218,8 @@ static void gdb_report_regs(gdb_client_t* gdb)
 {
     if (gdb->hart) {
         char buffer[1024] = {0};
-        size_t size = 0;
-        for (size_t x = 0; x < 33; ++x) {
+        uint64_t size = 0;
+        for (uint64_t x = 0; x < 33; ++x) {
             if (gdb->server->machine->rv64) {
                 size += gdb_value_to_hex_le(buffer + size, gdb->hart->registers[x], 8);
             } else {
@@ -233,11 +233,11 @@ static void gdb_report_regs(gdb_client_t* gdb)
     gdb_reply_str(gdb, "E.Invalid CPU");
 }
 
-static void gdb_write_regs(gdb_client_t* gdb, const char* packet, size_t size)
+static void gdb_write_regs(gdb_client_t* gdb, const char* packet, uint64_t size)
 {
     if (gdb->hart) {
-        size_t cur = 1;
-        for (size_t x = 0; x < 33; ++x) {
+        uint64_t cur = 1;
+        for (uint64_t x = 0; x < 33; ++x) {
             if (gdb->server->machine->rv64) {
                 gdb->hart->registers[x] = gdb_hex_to_value_le(packet + cur, 8);
                 cur += 16;
@@ -257,7 +257,7 @@ static void gdb_write_regs(gdb_client_t* gdb, const char* packet, size_t size)
 
 }
 
-static void gdb_read_memory(gdb_client_t* gdb, uint64_t addr, size_t bytes)
+static void gdb_read_memory(gdb_client_t* gdb, uint64_t addr, uint64_t bytes)
 {
     if (gdb->hart) {
         char reply[256] = {0};
@@ -273,7 +273,7 @@ static void gdb_read_memory(gdb_client_t* gdb, uint64_t addr, size_t bytes)
     gdb_reply_str(gdb, "E00");
 }
 
-static void gdb_write_memory(gdb_client_t* gdb, uint64_t addr, const char* hex, size_t bytes)
+static void gdb_write_memory(gdb_client_t* gdb, uint64_t addr, const char* hex, uint64_t bytes)
 {
     if (gdb->hart) {
         uint8_t buffer[64] = {0};
@@ -289,10 +289,10 @@ static void gdb_write_memory(gdb_client_t* gdb, uint64_t addr, const char* hex, 
     gdb_reply_str(gdb, "E00");
 }
 
-static void gdb_handle_m(gdb_client_t* gdb, const char* packet, size_t size)
+static void gdb_handle_m(gdb_client_t* gdb, const char* packet, uint64_t size)
 {
-    size_t cur = 1;
-    size_t num_size = size - cur;
+    uint64_t cur = 1;
+    uint64_t num_size = size - cur;
     uint64_t mem_addr = str_to_uint_base(packet + cur, &num_size, 16);
     if (num_size == 0) {
         gdb_reply_nak(gdb);
@@ -327,7 +327,7 @@ static void gdb_handle_m(gdb_client_t* gdb, const char* packet, size_t size)
     }
 }
 
-static void gdb_select_thread(gdb_client_t* gdb, size_t thread_id)
+static void gdb_select_thread(gdb_client_t* gdb, uint64_t thread_id)
 {
     rvvm_machine_t* machine = gdb->server->machine;
     rvvm_hart_t* hart = NULL;
@@ -337,23 +337,23 @@ static void gdb_select_thread(gdb_client_t* gdb, size_t thread_id)
     gdb->hart = hart;
 }
 
-static void gdb_handle_h(gdb_client_t* gdb, const char* packet, size_t size)
+static void gdb_handle_h(gdb_client_t* gdb, const char* packet, uint64_t size)
 {
     if (packet[1] == 'g') {
-        size_t strsize = size - 2;
-        size_t thread_id = str_to_int_base(packet + 2, &strsize, 16);
+        uint64_t strsize = size - 2;
+        uint64_t thread_id = str_to_int_base(packet + 2, &strsize, 16);
         gdb_select_thread(gdb, thread_id);
     }
     gdb_reply_str(gdb, "OK");
 }
 
-static void gdb_handle_q(gdb_client_t* gdb, const char* packet, size_t size)
+static void gdb_handle_q(gdb_client_t* gdb, const char* packet, uint64_t size)
 {
     UNUSED(size);
     if (rvvm_strfind(packet, "qfThreadInfo")) {
         rvvm_machine_t* machine = gdb->server->machine;
         char str[256] = "m";
-        size_t cur = rvvm_strlen(str);
+        uint64_t cur = rvvm_strlen(str);
         vector_foreach(machine->harts, i) {
             char id[16] = {0};
             int_to_str_dec(id, sizeof(id), i);
@@ -370,7 +370,7 @@ static void gdb_handle_q(gdb_client_t* gdb, const char* packet, size_t size)
     }
 }
 
-static void gdb_handle_packet(gdb_client_t* gdb, const char* packet, size_t size)
+static void gdb_handle_packet(gdb_client_t* gdb, const char* packet, uint64_t size)
 {
     rvvm_debug("Packet: %.*s", (uint32_t)size, packet);
 
@@ -415,7 +415,7 @@ static void gdb_handle_packet(gdb_client_t* gdb, const char* packet, size_t size
 
 static bool gdb_parse_packet(gdb_client_t* gdb)
 {
-    for (size_t i = 0; i < gdb->recv_size; ++i) {
+    for (uint64_t i = 0; i < gdb->recv_size; ++i) {
         if (gdb->recv_buffer[i] == '#' && i + 3 <= gdb->recv_size) {
             // Ignore checksum
             gdb_reply_ack(gdb);
@@ -441,7 +441,7 @@ static void gdb_close(gdb_client_t* gdb)
 
 static void gdbstrub_recv(gdb_server_t* server, gdb_client_t* gdb)
 {
-    size_t size = sizeof(gdb->recv_buffer) - gdb->recv_size;
+    uint64_t size = sizeof(gdb->recv_buffer) - gdb->recv_size;
     int32_t ret = net_tcp_recv(gdb->sock, gdb->recv_buffer + gdb->recv_size, size);
 
     if (ret < 0) {
@@ -511,9 +511,9 @@ static void gdbstub_accept(gdb_server_t* server)
 static bool gdbstub_tick(gdb_server_t* server, uint32_t timeout)
 {
     net_event_t events[16] = {0};
-    size_t nevents = net_poll_wait(server->poll, events, STATIC_ARRAY_SIZE(events), timeout);
+    uint64_t nevents = net_poll_wait(server->poll, events, STATIC_ARRAY_SIZE(events), timeout);
     spin_lock(&server->lock);
-    for (size_t i = 0; i < nevents; ++i) {
+    for (uint64_t i = 0; i < nevents; ++i) {
         if (events[i].data == server->listener) {
             // Accept new GDB client
             gdbstub_accept(server);

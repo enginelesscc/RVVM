@@ -107,14 +107,14 @@ static regid_t rvjit_reclaim_hreg(rvjit_block_t* block)
     }
     // Reclaim least recently used register mapping
     regid_t greg = 0, hreg;
-    size_t lru = (size_t)-1;
+    uint64_t lru = (uint64_t)-1;
     for (regid_t i=0; i<RVJIT_REGISTERS; ++i) {
         if (block->regs[i].hreg != REG_ILL && block->regs[i].last_used < lru) {
             lru = block->regs[i].last_used;
             greg = i;
         }
     }
-    if (unlikely(lru == (size_t)-1)) {
+    if (unlikely(lru == (uint64_t)-1)) {
         rvvm_fatal("No reclaimable RVJIT registers!");
     }
     hreg = block->regs[greg].hreg;
@@ -222,7 +222,7 @@ static void rvjit_update_vm_pc(rvjit_block_t* block)
 
 RVJIT_CALL static void rvjit_tail_lookup(rvvm_hart_t* vm)
 {
-    size_t pc, tpc, entry, phys_pc;
+    uint64_t pc, tpc, entry, phys_pc;
     rvjit_func_t block;
     pc = vm->registers[REGISTER_PC];
     entry = (pc >> 1) & (TLB_SIZE - 1);
@@ -235,7 +235,7 @@ RVJIT_CALL static void rvjit_tail_lookup(rvvm_hart_t* vm)
         } else {
             vmptr_t ptr = riscv_vma_translate_e(vm, pc);
             if (ptr) {
-                phys_pc = (size_t)(ptr - vm->mem.data) + vm->mem.begin;
+                phys_pc = (uint64_t)(ptr - vm->mem.data) + vm->mem.begin;
                 block = rvjit_block_lookup(&vm->jit, phys_pc);
                 if (block) {
                     vm->jtlb[entry].pc = pc;
@@ -255,7 +255,7 @@ static void rvjit_lookup_block(rvjit_block_t* block)
 
 #ifdef RVJIT_LOOKUP_TAILCALL
     regid_t reg = rvjit_claim_hreg(block);
-    rvjit_native_setregw(block, reg, (size_t)rvjit_tail_lookup);
+    rvjit_native_setregw(block, reg, (uint64_t)rvjit_tail_lookup);
     rvjit_jmp_reg(block, reg);
     rvjit_free_hreg(block, reg);
 #elif defined(RVJIT_X86) && defined(RVJIT_NATIVE_64BIT)
@@ -391,14 +391,14 @@ static void rvjit_link_block(rvjit_block_t* block)
 {
 #ifdef RVJIT_NATIVE_LINKER
     rvjit_addr_t next_pc = block->phys_pc + block->pc_off;
-    size_t exit_ptr = (size_t)(block->heap.data + block->heap.curr + block->size);
-    size_t next_block;
+    uint64_t exit_ptr = (uint64_t)(block->heap.data + block->heap.curr + block->size);
+    uint64_t next_block;
     if (next_pc == block->phys_pc) {
-        next_block = (size_t)(block->heap.data + block->heap.curr);
+        next_block = (uint64_t)(block->heap.data + block->heap.curr);
     } else {
         next_block = hashmap_get(&block->heap.blocks, next_pc);
         if (next_block && block->heap.code) {
-            next_block += (size_t)(block->heap.data) - (size_t)(block->heap.code);
+            next_block += (uint64_t)(block->heap.data) - (uint64_t)(block->heap.code);
         }
     }
 
@@ -442,8 +442,8 @@ void rvjit_linker_patch_ret(void* addr)
 
 void rvjit_emit_end(rvjit_block_t* block, uint8_t linkage)
 {
-    size_t hreg_mask = block->hreg_mask;
-    size_t abireclaim_mask = block->abireclaim_mask;
+    uint64_t hreg_mask = block->hreg_mask;
+    uint64_t abireclaim_mask = block->abireclaim_mask;
 
     // Save allocated native registers into VM context
     for (regid_t i=0; i<RVJIT_REGISTERS; ++i) {

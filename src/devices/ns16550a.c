@@ -70,7 +70,7 @@ static void ns16550a_notify(void* io_dev, uint32_t flags)
     }
 }
 
-static bool ns16550a_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ns16550a_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ns16550a_dev_t* uart = dev->data;
     memset(data, 0, size);
@@ -127,7 +127,7 @@ static bool ns16550a_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, 
     return true;
 }
 
-static bool ns16550a_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ns16550a_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ns16550a_dev_t* uart = dev->data;
     UNUSED(size);

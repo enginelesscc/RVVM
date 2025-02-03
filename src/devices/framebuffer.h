@@ -35,7 +35,7 @@ typedef struct {
  */
 
 //! Get bytes per pixel for a format
-static inline size_t rgb_format_bytes(rgb_fmt_t format)
+static inline uint64_t rgb_format_bytes(rgb_fmt_t format)
 {
     switch (format) {
         case RGB_FMT_R5G6B5:   return 2;
@@ -47,13 +47,13 @@ static inline size_t rgb_format_bytes(rgb_fmt_t format)
 }
 
 //! Get bits per pixel (bpp) for a format
-static inline size_t rgb_format_bpp(rgb_fmt_t format)
+static inline uint64_t rgb_format_bpp(rgb_fmt_t format)
 {
     return rgb_format_bytes(format) << 3;
 }
 
 //! Get pixel format from bpp
-static inline rgb_fmt_t rgb_format_from_bpp(size_t bpp)
+static inline rgb_fmt_t rgb_format_from_bpp(uint64_t bpp)
 {
     switch (bpp) {
         case 16: return RGB_FMT_R5G6B5;
@@ -69,13 +69,13 @@ static inline rgb_fmt_t rgb_format_from_bpp(size_t bpp)
  */
 
 //! Calculate effective framebuffer stride
-static inline size_t framebuffer_stride(const fb_ctx_t* fb)
+static inline uint64_t framebuffer_stride(const fb_ctx_t* fb)
 {
     return fb->stride ? fb->stride : fb->width * rgb_format_bytes(fb->format);
 }
 
 //! Calculate framebuffer region size
-static inline size_t framebuffer_size(const fb_ctx_t* fb)
+static inline uint64_t framebuffer_size(const fb_ctx_t* fb)
 {
     return framebuffer_stride(fb) * fb->height;
 }

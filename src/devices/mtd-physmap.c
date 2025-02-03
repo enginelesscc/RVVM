@@ -36,13 +36,13 @@ static rvvm_mmio_type_t mtd_type = {
     .reset = mtd_reset,
 };
 
-static bool mtd_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool mtd_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     mtd_dev_t* mtd = dev->data;
     return blk_read(mtd->blk, data, size, offset) == size;
 }
 
-static bool mtd_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool mtd_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     mtd_dev_t* mtd = dev->data;
     return blk_write(mtd->blk, data, size, offset) == size;

@@ -77,7 +77,7 @@ typedef struct {
     uint32_t target[APLIC_SRC_LIMIT];
 } aplic_ctx_t;
 
-static bool aplic_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool aplic_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     aplic_ctx_t* aplic = dev->data;
     uint32_t val = -1;
@@ -96,7 +96,7 @@ static bool aplic_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uin
     return true;
 }
 
-static bool aplic_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool aplic_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     aplic_ctx_t* aplic = dev->data;
     uint32_t val = read_uint32_le(data);
@@ -104,12 +104,12 @@ static bool aplic_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, ui
 
     //rvvm_warn("aplic write %08x to   %02x", val, (uint32_t)offset);
     if (offset >= APLIC_REG_TARGET_1 && offset <= APLIC_REG_TARGET_1023) {
-        size_t reg = ((offset - APLIC_REG_TARGET_1) >> 2) + 1;
+        uint64_t reg = ((offset - APLIC_REG_TARGET_1) >> 2) + 1;
         if (reg < APLIC_SRC_LIMIT) {
             atomic_store_uint32_relax(&aplic->target[reg], val);
         }
     } else if (offset >= APLIC_REG_SOURCECFG_1 && offset <= APLIC_REG_SOURCECFG_1023) {
-        size_t reg = ((offset - APLIC_REG_SOURCECFG_1) >> 2) + 1;
+        uint64_t reg = ((offset - APLIC_REG_SOURCECFG_1) >> 2) + 1;
         if (reg < APLIC_SRC_LIMIT) {
             atomic_store_uint32_relax(&aplic->source[reg], val);
         }
@@ -135,7 +135,7 @@ static bool aplic_send_irq(rvvm_intc_t* intc, rvvm_irq_t irq)
         uint32_t source =  atomic_load_uint32_relax(&aplic->source[irq]);
         if (source) {
             uint32_t target =  atomic_load_uint32_relax(&aplic->target[irq]);
-            size_t hartid = target >> 18;
+            uint64_t hartid = target >> 18;
             if (hartid < vector_size(aplic->machine->harts)) {
                 rvvm_hart_t* hart = vector_at(aplic->machine->harts, hartid);
                 riscv_send_aia_irq(hart, true, bit_cut(target, 0, 10));
@@ -152,7 +152,7 @@ static uint32_t aplic_fdt_phandle(rvvm_intc_t* intc)
     return aplic->phandle;
 }
 
-static size_t aplic_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, size_t size)
+static uint64_t aplic_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, uint64_t size)
 {
     UNUSED(intc);
     if (cells && size >= 2) {

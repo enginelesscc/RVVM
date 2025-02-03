@@ -46,7 +46,7 @@ static void ps2_altera_notify(void* io_dev, uint32_t flags)
     }
 }
 
-static bool ps2_altera_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ps2_altera_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ps2_altera_dev_t* ps2 = dev->data;
     uint32_t val = 0;
@@ -68,7 +68,7 @@ static bool ps2_altera_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uin
     return true;
 }
 
-static bool ps2_altera_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool ps2_altera_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     ps2_altera_dev_t* ps2 = dev->data;
     uint32_t val = read_uint32_le(data);

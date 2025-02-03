@@ -76,9 +76,9 @@ typedef struct {
 //! \param  mem_len   Length of PCI MMIO Space
 //! \return PCI bus handle, or NULL on failure
 PUBLIC pci_bus_t* pci_bus_init(rvvm_machine_t* machine, rvvm_intc_t* intc, const rvvm_irq_t* irqs,
-                               rvvm_addr_t ecam_addr, size_t bus_count,
-                               rvvm_addr_t io_addr,   size_t io_len,
-                               rvvm_addr_t mem_addr,  size_t mem_len);
+                               rvvm_addr_t ecam_addr, uint64_t bus_count,
+                               rvvm_addr_t io_addr,   uint64_t io_len,
+                               rvvm_addr_t mem_addr,  uint64_t mem_len);
 
 //! \brief  Attach an automatically configured PCIe host ECAM controller to a powered off machine
 //! \param  machine RVVM Machine handle with a working IRQ controller
@@ -149,7 +149,7 @@ PUBLIC void pci_remove_device(pci_dev_t* dev);
 //! \param  dev     Valid PCI device handle
 //! \param  func_id PCI function ID in the range of 0-7
 //! \return PCI function handle, or NULL on failure
-PUBLIC pci_func_t* pci_get_device_func(pci_dev_t* dev, size_t func_id);
+PUBLIC pci_func_t* pci_get_device_func(pci_dev_t* dev, uint64_t func_id);
 
 //! \brief Send INTx/MSI/MSI-X interrupt to the PCI host
 //! \param func   Valid handle to a PCI function which sent the IRQ
@@ -161,7 +161,7 @@ PUBLIC void pci_send_irq(pci_func_t* func, uint32_t msi_id);
 //! \param addr Physical memory address
 //! \param size Memory region size
 //! \return Direct pointer to PCI host memory, or NULL on failure
-PUBLIC void* pci_get_dma_ptr(pci_func_t* func, rvvm_addr_t addr, size_t size);
+PUBLIC void* pci_get_dma_ptr(pci_func_t* func, rvvm_addr_t addr, uint64_t size);
 
 /** @}*/
 

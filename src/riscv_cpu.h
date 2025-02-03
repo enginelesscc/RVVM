@@ -52,9 +52,9 @@ static forceinline void riscv_jit_compile(rvvm_hart_t* vm)
 
 // Mark the physical memory as dirty (Overwritten)
 #ifdef USE_JIT
-void riscv_jit_mark_dirty_mem(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size);
+void riscv_jit_mark_dirty_mem(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size);
 #else
-static forceinline void riscv_jit_mark_dirty_mem(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size) {
+static forceinline void riscv_jit_mark_dirty_mem(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size) {
     UNUSED(machine);
     UNUSED(addr);
     UNUSED(size);

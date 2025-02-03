@@ -2088,11 +2088,11 @@ struct retro_memory_descriptor
     * It's recommended to minimize the number of descriptors if possible,
     * but not mandatory. */
    void *ptr;
-   size_t offset;
+   uint64_t offset;
 
    /* This is the location in the emulated address space
     * where the mapping starts. */
-   size_t start;
+   uint64_t start;
 
    /* Which bits must be same as in 'start' for this mapping to apply.
     * The first memory descriptor to claim a certain byte is the one
@@ -2100,11 +2100,11 @@ struct retro_memory_descriptor
     * A bit which is set in 'start' must also be set in this.
     * Can be zero, in which case each byte is assumed mapped exactly once.
     * In this case, 'len' must be a power of two. */
-   size_t select;
+   uint64_t select;
 
    /* If this is nonzero, the set bits are assumed not connected to the
     * memory chip's address pins. */
-   size_t disconnect;
+   uint64_t disconnect;
 
    /* This one tells the size of the current memory area.
     * If, after start+disconnect are applied, the address is higher than
@@ -2113,7 +2113,7 @@ struct retro_memory_descriptor
     * If the address is still too high, the next highest bit is cleared.
     * Can be zero, in which case it's assumed to be infinite (as limited
     * by 'select' and 'disconnect'). */
-   size_t len;
+   uint64_t len;
 
    /* To go from emulated address to physical address, the following
     * order applies:
@@ -2523,7 +2523,7 @@ typedef void (RETRO_CALLCONV *retro_camera_lifetime_status_t)(void);
  * First pixel is top-left origin.
  */
 typedef void (RETRO_CALLCONV *retro_camera_frame_raw_framebuffer_t)(const uint32_t *buffer,
-      unsigned width, unsigned height, size_t pitch);
+      unsigned width, unsigned height, uint64_t pitch);
 
 /* A callback for when OpenGL textures are used.
  *
@@ -2956,7 +2956,7 @@ typedef bool (RETRO_CALLCONV *retro_set_initial_image_t)(unsigned index, const c
  * Returns 'false' if index is invalid (index >= get_num_images())
  * or path is otherwise unavailable.
  */
-typedef bool (RETRO_CALLCONV *retro_get_image_path_t)(unsigned index, char *path, size_t len);
+typedef bool (RETRO_CALLCONV *retro_get_image_path_t)(unsigned index, char *path, uint64_t len);
 
 /* Fetches a core-provided 'label' for the specified disk
  * image file. In the simplest case this may be a file name
@@ -2971,7 +2971,7 @@ typedef bool (RETRO_CALLCONV *retro_get_image_path_t)(unsigned index, char *path
  * Returns 'false' if index is invalid (index >= get_num_images())
  * or label is otherwise unavailable.
  */
-typedef bool (RETRO_CALLCONV *retro_get_image_label_t)(unsigned index, char *label, size_t len);
+typedef bool (RETRO_CALLCONV *retro_get_image_label_t)(unsigned index, char *label, uint64_t len);
 
 struct retro_disk_control_callback
 {
@@ -3418,7 +3418,7 @@ struct retro_game_info_ext
    const void *data;
 
    /* Size of game content memory buffer, in bytes */
-   size_t size;
+   uint64_t size;
 
    /* True if loaded content file is inside a compressed
     * archive */
@@ -3697,7 +3697,7 @@ struct retro_game_info
                             * that this path is valid. */
    const void *data;       /* Memory buffer of loaded game. Will be NULL
                             * if need_fullpath was set. */
-   size_t      size;       /* Size of memory buffer. */
+   uint64_t      size;       /* Size of memory buffer. */
    const char *meta;       /* String of implementation specific meta-data. */
 };
 
@@ -3715,7 +3715,7 @@ struct retro_framebuffer
                                        The initial contents of data are unspecified. */
    unsigned width;                  /* The framebuffer width used by the core. Set by core. */
    unsigned height;                 /* The framebuffer height used by the core. Set by core. */
-   size_t pitch;                    /* The number of bytes between the beginning of a scanline,
+   uint64_t pitch;                    /* The number of bytes between the beginning of a scanline,
                                        and beginning of the next scanline.
                                        Set by frontend in GET_CURRENT_SOFTWARE_FRAMEBUFFER. */
    enum retro_pixel_format format;  /* The pixel format the core must use to render into data.
@@ -3827,7 +3827,7 @@ typedef bool (RETRO_CALLCONV *retro_environment_t)(unsigned cmd, void *data);
  * that are not packed in memory.
  */
 typedef void (RETRO_CALLCONV *retro_video_refresh_t)(const void *data, unsigned width,
-      unsigned height, size_t pitch);
+      unsigned height, uint64_t pitch);
 
 /* Renders a single audio frame. Should only be used if implementation
  * generates a single sample at a time.
@@ -3841,8 +3841,8 @@ typedef void (RETRO_CALLCONV *retro_audio_sample_t)(int16_t left, int16_t right)
  * I.e. int16_t buf[4] = { l, r, l, r }; would be 2 frames.
  * Only one of the audio callbacks must ever be used.
  */
-typedef size_t (RETRO_CALLCONV *retro_audio_sample_batch_t)(const int16_t *data,
-      size_t frames);
+typedef uint64_t (RETRO_CALLCONV *retro_audio_sample_batch_t)(const int16_t *data,
+      uint64_t frames);
 
 /* Polls input. */
 typedef void (RETRO_CALLCONV *retro_input_poll_t)(void);
@@ -3925,12 +3925,12 @@ RETRO_API void retro_run(void);
  * returned size is never allowed to be larger than a previous returned
  * value, to ensure that the frontend can allocate a save state buffer once.
  */
-RETRO_API size_t retro_serialize_size(void);
+RETRO_API uint64_t retro_serialize_size(void);
 
 /* Serializes internal state. If failed, or size is lower than
  * retro_serialize_size(), it should return false, true otherwise. */
-RETRO_API bool retro_serialize(void *data, size_t size);
-RETRO_API bool retro_unserialize(const void *data, size_t size);
+RETRO_API bool retro_serialize(void *data, uint64_t size);
+RETRO_API bool retro_unserialize(const void *data, uint64_t size);
 
 RETRO_API void retro_cheat_reset(void);
 RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char *code);
@@ -3944,7 +3944,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game);
  * except in extreme cases. */
 RETRO_API bool retro_load_game_special(
   unsigned game_type,
-  const struct retro_game_info *info, size_t num_info
+  const struct retro_game_info *info, uint64_t num_info
 );
 
 /* Unloads the currently loaded game. Called before retro_deinit(void). */
@@ -3955,7 +3955,7 @@ RETRO_API unsigned retro_get_region(void);
 
 /* Gets region of memory. */
 RETRO_API void *retro_get_memory_data(unsigned id);
-RETRO_API size_t retro_get_memory_size(unsigned id);
+RETRO_API uint64_t retro_get_memory_size(unsigned id);
 
 #ifdef __cplusplus
 }

@@ -96,7 +96,7 @@ static inline bool spin_try_claim_internal(spinlock_t* lock, const char* locatio
 
 slow_path static void spin_lock_wait_internal(spinlock_t* lock, const char* location, bool writer)
 {
-    for (size_t i = 0; i < SPINLOCK_RETRIES; ++i) {
+    for (uint64_t i = 0; i < SPINLOCK_RETRIES; ++i) {
         // Read lock flag until there's any chance to grab it
         // Improves performance due to cacheline bouncing elimination
         uint32_t flag = atomic_load_uint32_ex(&lock->flag, ATOMIC_RELAXED);

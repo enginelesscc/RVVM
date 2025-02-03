@@ -94,7 +94,7 @@ struct net_poll {
     net_handle_t fd;
 #else
     vector_t(net_monitor_t) events;
-    size_t consumed;
+    uint64_t consumed;
     fd_set r_set,   w_set;
     fd_set r_ready, w_ready;
     net_sock_t* wake_sock[2];
@@ -389,15 +389,15 @@ static int32_t net_last_error(void)
 
 // Public socket API
 
-size_t net_parse_ipv6(net_addr_t* addr, const char* str)
+uint64_t net_parse_ipv6(net_addr_t* addr, const char* str)
 {
     net_addr_t result = {0};
     const char* parse = str;
     bool bracket = parse[0] == '[';
     bool skip_colon = false;
     const char* colon_pair = rvvm_strfind(parse, "::");
-    size_t bytes = 0;
-    size_t right_start = 0;
+    uint64_t bytes = 0;
+    uint64_t right_start = 0;
     if (bracket) parse++;
     for (; bytes < 16; bytes += 2) {
         if (parse == colon_pair) {
@@ -414,7 +414,7 @@ size_t net_parse_ipv6(net_addr_t* addr, const char* str)
             break;
         }
         // Parse hex group
-        size_t len = 0;
+        uint64_t len = 0;
         uint16_t hex = str_to_uint_base(parse, &len, 16);
         if (!len || len > 4) {
             // Hex parsing failed or pair too long
@@ -446,12 +446,12 @@ size_t net_parse_ipv6(net_addr_t* addr, const char* str)
     return parse - str;
 }
 
-size_t net_parse_ipv4(net_addr_t* addr, const char* str)
+uint64_t net_parse_ipv4(net_addr_t* addr, const char* str)
 {
     net_addr_t result = {0};
     const char* parse = str;
-    for (size_t i = 0; i < 4; ++i) {
-        size_t len = 0;
+    for (uint64_t i = 0; i < 4; ++i) {
+        uint64_t len = 0;
         result.ip[i] = str_to_uint_base(parse, &len, 10);
         if (!len) {
             // Integer parsing failed
@@ -467,14 +467,14 @@ size_t net_parse_ipv4(net_addr_t* addr, const char* str)
     return parse - str;
 }
 
-size_t net_parse_addr(net_addr_t* addr, const char* str)
+uint64_t net_parse_addr(net_addr_t* addr, const char* str)
 {
     const char* parse = str;
     const char* colon = rvvm_strfind(parse, ":");
     bool ipv6 = colon && rvvm_strfind(colon + 1, ":"); // More than a single :
     bool ipv4 = rvvm_strfind(parse, ".");
     bool parse_port = false;
-    size_t ip_len = 0;
+    uint64_t ip_len = 0;
     if (ipv6) {
         ip_len = net_parse_ipv6(addr, str);
         if (!ip_len) return 0;
@@ -495,7 +495,7 @@ size_t net_parse_addr(net_addr_t* addr, const char* str)
         parse++;
     }
     if (parse_port) {
-        size_t len = 0;
+        uint64_t len = 0;
         uint16_t port = str_to_uint_base(parse, &len, 10);
         if (!len) {
             // Integer parsing failed
@@ -622,7 +622,7 @@ bool net_tcp_shutdown(net_sock_t* sock)
     return sock && shutdown(sock->fd, 1) == 0;
 }
 
-int32_t net_tcp_send(net_sock_t* sock, const void* buffer, size_t size)
+int32_t net_tcp_send(net_sock_t* sock, const void* buffer, uint64_t size)
 {
     if (sock == NULL) return NET_ERR_RESET;
     int ret = send(sock->fd, buffer, size, 0);
@@ -630,7 +630,7 @@ int32_t net_tcp_send(net_sock_t* sock, const void* buffer, size_t size)
     return ret;
 }
 
-int32_t net_tcp_recv(net_sock_t* sock, void* buffer, size_t size)
+int32_t net_tcp_recv(net_sock_t* sock, void* buffer, uint64_t size)
 {
     if (sock == NULL) return NET_ERR_RESET;
     int ret = recv(sock->fd, buffer, size, 0);
@@ -652,7 +652,7 @@ net_sock_t* net_udp_bind(const net_addr_t* addr)
     return net_init_localaddr(net_wrap_handle(fd), addr);
 }
 
-size_t net_udp_send(net_sock_t* sock, const void* buffer, size_t size, const net_addr_t* addr)
+uint64_t net_udp_send(net_sock_t* sock, const void* buffer, uint64_t size, const net_addr_t* addr)
 {
     int ret = 0;
     if (sock == NULL) return 0;
@@ -670,7 +670,7 @@ size_t net_udp_send(net_sock_t* sock, const void* buffer, size_t size, const net
     return ret > 0 ? ret : 0;
 }
 
-int32_t net_udp_recv(net_sock_t* sock, void* buffer, size_t size, net_addr_t* addr)
+int32_t net_udp_recv(net_sock_t* sock, void* buffer, uint64_t size, net_addr_t* addr)
 {
     int ret = 0;
     if (sock == NULL) return NET_ERR_RESET;
@@ -925,7 +925,7 @@ bool net_poll_remove(net_poll_t* poll, net_sock_t* sock)
 
 #define NET_POLL_MAX_EVENTS 64
 
-size_t net_poll_wait(net_poll_t* poll, net_event_t* events, size_t size, uint32_t wait_ms)
+uint64_t net_poll_wait(net_poll_t* poll, net_event_t* events, uint64_t size, uint32_t wait_ms)
 {
     if (poll == NULL || size == 0) return 0;
 #if defined(EPOLL_NET_IMPL)
@@ -939,7 +939,7 @@ size_t net_poll_wait(net_poll_t* poll, net_event_t* events, size_t size, uint32_
                         | ((ev[i].events & EPOLLOUT) ? NET_POLL_SEND : 0);
     }
 #elif defined(KQUEUE_NET_IMPL)
-    size_t ret = 0;
+    uint64_t ret = 0;
     struct kevent ev[NET_POLL_MAX_EVENTS];
     struct timespec ts = {
         .tv_sec = wait_ms / 1000,
@@ -954,7 +954,7 @@ size_t net_poll_wait(net_poll_t* poll, net_event_t* events, size_t size, uint32_
     // Coalesce NET_POLL_SEND flags onto associated event entry
     for (int i=0; i<cnt; ++i) if (ev[i].filter == EVFILT_WRITE) {
         bool coalesce = false;
-        for (size_t j=0; j<ret; ++j) if (events[j].data == (void*)ev[i].udata) {
+        for (uint64_t j=0; j<ret; ++j) if (events[j].data == (void*)ev[i].udata) {
             events[j].flags |= NET_POLL_SEND;
             coalesce = true;
             break;
@@ -965,7 +965,7 @@ size_t net_poll_wait(net_poll_t* poll, net_event_t* events, size_t size, uint32_
         }
     }
 #else
-    size_t ret = 0;
+    uint64_t ret = 0;
     spin_lock(&poll->lock);
     bool has_events = poll->consumed;
     if (!has_events) {
@@ -993,7 +993,7 @@ size_t net_poll_wait(net_poll_t* poll, net_event_t* events, size_t size, uint32_
     }
     if (has_events) {
         // Loop over buffered socket state
-        for (size_t i = poll->consumed; i < vector_size(poll->events); ++i) {
+        for (uint64_t i = poll->consumed; i < vector_size(poll->events); ++i) {
             const net_monitor_t* monitor = &vector_at(poll->events, i);
             uint32_t flags = 0;
             if (monitor->flags & NET_POLL_RECV) {

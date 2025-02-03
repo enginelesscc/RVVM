@@ -129,7 +129,7 @@ void tap_attach(tap_dev_t* tap, const tap_net_dev_t* net_dev)
     }
 }
 
-bool tap_send(tap_dev_t* tap, const void* data, size_t size)
+bool tap_send(tap_dev_t* tap, const void* data, uint64_t size)
 {
     return write(tap->fd, data, size) >= 0;
 }

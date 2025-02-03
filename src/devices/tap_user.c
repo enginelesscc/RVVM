@@ -89,7 +89,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 typedef struct tcp_segment tcp_segment_t;
 struct tcp_segment {
     tcp_segment_t* next;
-    size_t size;
+    uint64_t size;
 };
 
 typedef struct {
@@ -139,7 +139,7 @@ struct tap_dev {
     bool          filt_lan;
 };
 
-static inline bool eth_send(tap_dev_t* tap, const void* buffer, size_t size)
+static inline bool eth_send(tap_dev_t* tap, const void* buffer, uint64_t size)
 {
     return tap->net.feed_rx(tap->net.net_dev, buffer, size);
 }
@@ -153,13 +153,13 @@ static inline uint16_t ip_checksum_combine(uint16_t csum1, uint16_t csum2)
 }
 #endif
 
-static uint16_t ip_checksum(const void* data, size_t size, uint16_t initial)
+static uint16_t ip_checksum(const void* data, uint64_t size, uint16_t initial)
 {
     const uint8_t* buffer = (const uint8_t*)data;
     uint32_t sum = (~initial) & 0xFFFF;
     uint8_t tail = size & 1;
     size -= tail;
-    for (size_t i = 0; i < size; i += 2) {
+    for (uint64_t i = 0; i < size; i += 2) {
         sum += read_uint16_be_m(buffer + i);
     }
     if (tail) {
@@ -191,7 +191,7 @@ static void create_arp_frame(tap_dev_t* tap, uint8_t* frame, const void* req_ip)
     memcpy(frame + 24, req_ip,      PLEN_IPv4); // Сlient IP
 }
 
-static uint8_t* create_ipv4_frame(uint8_t* frame, size_t size, uint8_t proto, const void* dest_ip, const void* src_ip)
+static uint8_t* create_ipv4_frame(uint8_t* frame, uint64_t size, uint8_t proto, const void* dest_ip, const void* src_ip)
 {
     frame[0] = 0x45; // Version 4, IHL 5
     frame[1] = 0;    // DSCP, ECN
@@ -211,7 +211,7 @@ static uint8_t* create_ipv4_frame(uint8_t* frame, size_t size, uint8_t proto, co
 }
 
 #if 0
-static uint8_t* create_ipv6_frame(uint8_t* frame, size_t size, uint8_t proto, const void* dest_ip, const void* src_ip)
+static uint8_t* create_ipv6_frame(uint8_t* frame, uint64_t size, uint8_t proto, const void* dest_ip, const void* src_ip)
 {
     frame[0] = 0x60;                    // Version 6
     frame[1] = 0;                       // Traffic class
@@ -225,7 +225,7 @@ static uint8_t* create_ipv6_frame(uint8_t* frame, size_t size, uint8_t proto, co
 }
 #endif
 
-static uint8_t* create_udp_datagram(uint8_t* udp, size_t size, uint16_t dst_port, uint16_t src_port)
+static uint8_t* create_udp_datagram(uint8_t* udp, uint64_t size, uint16_t dst_port, uint16_t src_port)
 {
     write_uint16_be_m(udp,     src_port);
     write_uint16_be_m(udp + 2, dst_port);
@@ -234,7 +234,7 @@ static uint8_t* create_udp_datagram(uint8_t* udp, size_t size, uint16_t dst_port
     return udp + UDP_HDR_SIZE;
 }
 
-static void udp_ipv4_checksum(uint8_t* ipv4, size_t size)
+static void udp_ipv4_checksum(uint8_t* ipv4, uint64_t size)
 {
     uint8_t* udp = ipv4 + IPv4_HDR_SIZE;
     uint16_t csum = ip_checksum(ipv4 + 12, PLEN_IPv4 << 1, 0);
@@ -261,7 +261,7 @@ static uint8_t* create_tcp_segment(uint8_t* tcp, uint8_t flags, uint32_t seq, ui
     return tcp + TCP_HDR_SIZE;
 }
 
-static void tcp_ipv4_checksum(uint8_t* ipv4, size_t size)
+static void tcp_ipv4_checksum(uint8_t* ipv4, uint64_t size)
 {
     uint8_t* tcp = ipv4 + IPv4_HDR_SIZE;
     uint16_t csum = ip_checksum(ipv4 + 12, PLEN_IPv4 << 1, 0);
@@ -274,7 +274,7 @@ static void tcp_ipv4_checksum(uint8_t* ipv4, size_t size)
     write_uint16_be_m(tcp + 16, csum);
 }
 
-static void handle_icmp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
+static void handle_icmp(tap_dev_t* tap, const uint8_t* buffer, uint64_t size, net_addr_t* dst, net_addr_t* src)
 {
     if (size >= ICMP_HDR_SIZE && size < 1460 && read_uint16_be_m(buffer) == ICMP_ECHO_REQ) {
         uint8_t frame[TAP_FRAME_SIZE];
@@ -288,7 +288,7 @@ static void handle_icmp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_
     }
 }
 
-static void handle_dhcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
+static void handle_dhcp(tap_dev_t* tap, const uint8_t* buffer, uint64_t size, net_addr_t* dst, net_addr_t* src)
 {
     if (unlikely(size < 240)) {
         // Packet too small
@@ -296,7 +296,7 @@ static void handle_dhcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_
     }
 
     uint8_t msg_type = DHCP_ENDMARK;
-    for (size_t i = 240; i + 2 < size;) {
+    for (uint64_t i = 240; i + 2 < size;) {
         if (buffer[i] == DHCP_MSG_TYPE) {
             msg_type = buffer[i+2];
             break;
@@ -391,7 +391,7 @@ static void tap_addr_convert(net_addr_t* addr)
     if (addr->ip[0] == 127) memcpy(addr->ip, GATEWAY_IP, 4);
 }
 
-static void handle_udp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
+static void handle_udp(tap_dev_t* tap, const uint8_t* buffer, uint64_t size, net_addr_t* dst, net_addr_t* src)
 {
     if (unlikely(size < UDP_HDR_SIZE)) {
         // Packet too small
@@ -422,7 +422,7 @@ static void handle_udp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
             ts = safe_new_obj(tap_sock_t);
             ts->sock = sock;
             ts->addr = *src;
-            hashmap_put(&tap->udp_ports, src->port, (size_t)ts);
+            hashmap_put(&tap->udp_ports, src->port, (uint64_t)ts);
             net_event_t event = { .data = ts, .flags = NET_POLL_RECV, };
             net_poll_add(tap->poll, ts->sock, &event);
         } else {
@@ -447,7 +447,7 @@ static void tap_tcp_segment_gen(tap_dev_t* tap, tap_sock_t* ts, uint8_t flags, u
     net_addr_t* dst = &ts->addr;
     const net_addr_t* src = net_sock_addr(ts->sock);
     uint8_t* ipv4 = create_eth_frame(tap, frame, ETH2_IPv4);
-    size_t opt_size = (flags & TCP_FLAG_SYN) ? 4 : 0;
+    uint64_t opt_size = (flags & TCP_FLAG_SYN) ? 4 : 0;
     uint8_t* tcp = create_ipv4_frame(ipv4, TCP_HDR_SIZE + opt_size, IP_PROTO_TCP, dst->ip, src->ip);
     uint8_t* opt = create_tcp_segment(tcp, flags, ts->tcp->seq - seq_sub, ts->tcp->ack, dst->port, src->port);
     if (flags & TCP_FLAG_SYN) {
@@ -471,16 +471,16 @@ static inline bool tcp_window_avail(tcp_ctx_t* tcp)
     return tcp->seq - tcp->seq_ack < tcp->window;
 }
 
-static inline size_t tcp_ack_amount(tcp_ctx_t* tcp, uint32_t ack)
+static inline uint64_t tcp_ack_amount(tcp_ctx_t* tcp, uint32_t ack)
 {
-    size_t ret = ack - tcp->seq_ack;
+    uint64_t ret = ack - tcp->seq_ack;
     return (ret < 0x80000000) ? ret : 0; // Care for wraparound
 }
 
-static inline size_t tcp_hash_tuple(const net_addr_t* remote, const net_addr_t* local)
+static inline uint64_t tcp_hash_tuple(const net_addr_t* remote, const net_addr_t* local)
 {
     // Hash distribution happens in hashmap itself
-    size_t hash = (((uint32_t)remote->port) << 16) + local->port;
+    uint64_t hash = (((uint32_t)remote->port) << 16) + local->port;
     if (remote->type == NET_TYPE_IPV6) {
         hash += read_uint64_le_m(remote->ip) + read_uint64_le_m(local->ip);
         hash += read_uint64_le_m(remote->ip + 8) + read_uint64_le_m(local->ip + 8);
@@ -492,7 +492,7 @@ static inline size_t tcp_hash_tuple(const net_addr_t* remote, const net_addr_t* 
 
 static tap_sock_t* tap_tcp_lookup(tap_dev_t* tap, const net_addr_t* remote, const net_addr_t* local)
 {
-    size_t hash = tcp_hash_tuple(remote, local);
+    uint64_t hash = tcp_hash_tuple(remote, local);
     ts_vec_t* vec = (ts_vec_t*)hashmap_get(&tap->tcp_map, hash);
     if (vec) {
         vector_foreach(*vec, i) {
@@ -508,11 +508,11 @@ static void tap_tcp_register(tap_dev_t* tap, tap_sock_t* ts)
 {
     const net_addr_t* remote = net_sock_addr(ts->sock);
     const net_addr_t* local = &ts->addr;
-    size_t hash = tcp_hash_tuple(remote, local);
+    uint64_t hash = tcp_hash_tuple(remote, local);
     ts_vec_t* vec = (ts_vec_t*)hashmap_get(&tap->tcp_map, hash);
     if (vec == NULL) {
         vec = safe_new_obj(ts_vec_t);
-        hashmap_put(&tap->tcp_map, hash, (size_t)vec);
+        hashmap_put(&tap->tcp_map, hash, (uint64_t)vec);
     }
     vector_push_back(*vec, ts);
 }
@@ -521,7 +521,7 @@ static void tap_tcp_remove(tap_dev_t* tap, tap_sock_t* ts)
 {
     const net_addr_t* remote = net_sock_addr(ts->sock);
     const net_addr_t* local = &ts->addr;
-    size_t hash = tcp_hash_tuple(remote, local);
+    uint64_t hash = tcp_hash_tuple(remote, local);
     ts_vec_t* vec = (ts_vec_t*)hashmap_get(&tap->tcp_map, hash);
     if (vec) {
         vector_foreach_back(*vec, i) {
@@ -564,13 +564,13 @@ static bool tap_tcp_arm_poll(tap_dev_t* tap, tap_sock_t* ts)
     return true;
 }
 
-static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
+static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, uint64_t size, net_addr_t* dst, net_addr_t* src)
 {
     src->port         = read_uint16_be_m(buffer);
     dst->port         = read_uint16_be_m(buffer + 2);
     uint32_t seq      = read_uint32_be_m(buffer + 4);
     uint32_t ack      = read_uint32_be_m(buffer + 8);
-    size_t   data_off = (buffer[12] >> 4) << 2;
+    uint64_t   data_off = (buffer[12] >> 4) << 2;
     uint8_t  flags    = buffer[13];
     uint16_t window   = read_uint16_be_m(buffer + 14);
 
@@ -629,8 +629,8 @@ static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
             // The guest sending side is open
             if (data_off >= TCP_HDR_SIZE && data_off < size) {
                 // Send data segment
-                size_t send_len = size - data_off;
-                size_t seq_off = tcp->ack - seq;
+                uint64_t send_len = size - data_off;
+                uint64_t seq_off = tcp->ack - seq;
                 if (send_len > seq_off) {
                     int32_t result = net_tcp_send(ts->sock, buffer + data_off + seq_off, send_len - seq_off);
                     if (result >= 0) {
@@ -699,7 +699,7 @@ static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
     spin_unlock(&tap->lock);
 }
 
-static void handle_ipv4(tap_dev_t* tap, const uint8_t* buffer, size_t size)
+static void handle_ipv4(tap_dev_t* tap, const uint8_t* buffer, uint64_t size)
 {
     net_addr_t dst = { .type = NET_TYPE_IPV4, };
     net_addr_t src = { .type = NET_TYPE_IPV4, };
@@ -707,8 +707,8 @@ static void handle_ipv4(tap_dev_t* tap, const uint8_t* buffer, size_t size)
         // Packet too small
         return;
     }
-    size_t total_length = read_uint16_be_m(buffer + 2);
-    size_t header_length = (buffer[0] & 0xF) << 2;
+    uint64_t total_length = read_uint16_be_m(buffer + 2);
+    uint64_t header_length = (buffer[0] & 0xF) << 2;
     uint16_t frag_flags = read_uint16_be_m(buffer + 6);
     if (unlikely(frag_flags & 0x3FFF)) {
         // This is a fragmented frame
@@ -735,7 +735,7 @@ static void handle_ipv4(tap_dev_t* tap, const uint8_t* buffer, size_t size)
     }
 }
 
-static void handle_ipv6(tap_dev_t* tap, const uint8_t* buffer, size_t size)
+static void handle_ipv6(tap_dev_t* tap, const uint8_t* buffer, uint64_t size)
 {
     net_addr_t dst = { .type = NET_TYPE_IPV6, };
     net_addr_t src = { .type = NET_TYPE_IPV6, };
@@ -743,7 +743,7 @@ static void handle_ipv6(tap_dev_t* tap, const uint8_t* buffer, size_t size)
         // Packet too small
         return;
     }
-    size_t payload_length = read_uint16_be_m(buffer + 4);
+    uint64_t payload_length = read_uint16_be_m(buffer + 4);
     if (unlikely(size < (payload_length + IPv6_HDR_SIZE))) {
         // Encoded size exceeds frame size
         return;
@@ -767,7 +767,7 @@ static void handle_ipv6(tap_dev_t* tap, const uint8_t* buffer, size_t size)
     }*/
 }
 
-static void handle_arp(tap_dev_t* tap, const uint8_t* buffer, size_t size)
+static void handle_arp(tap_dev_t* tap, const uint8_t* buffer, uint64_t size)
 {
     if (size < ARPv4_HDR_SIZE) {
         // Packet too small
@@ -783,7 +783,7 @@ static void handle_arp(tap_dev_t* tap, const uint8_t* buffer, size_t size)
     }
 }
 
-bool tap_send(tap_dev_t* tap, const void* data, size_t size)
+bool tap_send(tap_dev_t* tap, const void* data, uint64_t size)
 {
     if (unlikely(size < ETH2_HDR_SIZE)) {
         // Packet too small
@@ -837,7 +837,7 @@ static bool bind_port(tap_dev_t* tap, const net_addr_t* internal, const net_addr
             vector_push_back(tap->tcp_listeners, ts);
         } else {
             ts->timeout = BOUND_INF;
-            hashmap_put(&tap->udp_ports, internal->port, (size_t)ts);
+            hashmap_put(&tap->udp_ports, internal->port, (uint64_t)ts);
         }
         spin_unlock(&tap->lock);
         net_event_t event = { .data = ts, .flags = NET_POLL_RECV, };
@@ -850,8 +850,8 @@ static void tap_udp_recv(tap_dev_t* tap, tap_sock_t* ts)
 {
     uint8_t buffer[TAP_FRAME_SIZE];
     net_addr_t addr;
-    size_t offset = ETH2_HDR_SIZE + IPv4_HDR_SIZE + UDP_HDR_SIZE;
-    size_t size = sizeof(buffer) - offset;
+    uint64_t offset = ETH2_HDR_SIZE + IPv4_HDR_SIZE + UDP_HDR_SIZE;
+    uint64_t size = sizeof(buffer) - offset;
 
     if (ts->timeout != BOUND_INF) ts->timeout = 0;
     int32_t result = net_udp_recv(ts->sock, buffer + offset, size, &addr);
@@ -876,7 +876,7 @@ static void tap_tcp_recv(tap_dev_t* tap, tap_sock_t* ts)
     }
 
     tcp_segment_t* seg = safe_malloc(sizeof(tcp_segment_t) + TAP_FRAME_SIZE);
-    size_t size = TAP_FRAME_SIZE - TCP_WRAP_SIZE;
+    uint64_t size = TAP_FRAME_SIZE - TCP_WRAP_SIZE;
     int32_t result = net_tcp_recv(ts->sock, tcp_seg_buffer(seg) + TCP_WRAP_SIZE, size);
     if (result > 0) {
         // Push a segment and buffer it for retransmit
@@ -1017,9 +1017,9 @@ static void* tap_thread(void* arg)
     net_event_t events[64];
     rvtimer_init(&timer, 1000);
     while (true) {
-        size_t size = net_poll_wait(tap->poll, events, 64, 200);
+        uint64_t size = net_poll_wait(tap->poll, events, 64, 200);
         spin_lock(&tap->lock);
-        for (size_t i=0; i<size; ++i) {
+        for (uint64_t i=0; i<size; ++i) {
             if (events[i].data == NULL) {
                 // Shutdown notification
                 spin_unlock(&tap->lock);
@@ -1095,7 +1095,7 @@ bool tap_portfwd(tap_dev_t* tap, const char* fwd)
     const char* udp_prefix = rvvm_strfind(parse, "udp/");
     if (tcp_prefix || udp_prefix) parse += 4;
 
-    size_t host_len = net_parse_addr(&host, parse);
+    uint64_t host_len = net_parse_addr(&host, parse);
     if (!host_len) {
         rvvm_error("Failed to parse host address!");
         return false;
@@ -1105,7 +1105,7 @@ bool tap_portfwd(tap_dev_t* tap, const char* fwd)
     if (rvvm_strfind(parse, "=") == parse) {
         // Guest address is specified
         parse++;
-        size_t guest_len = net_parse_addr(&guest, parse);
+        uint64_t guest_len = net_parse_addr(&guest, parse);
         if (!guest_len) {
             rvvm_error("Failed to parse guest address!");
             return false;

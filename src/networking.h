@@ -49,13 +49,13 @@ extern const net_addr_t net_ipv6_local_addr;
 #define NET_ERR_RESET      (-4)
 
 // Parses IPv6 address string, returns parsed length or 0 on failure
-size_t      net_parse_ipv6(net_addr_t* addr, const char* str);
+uint64_t      net_parse_ipv6(net_addr_t* addr, const char* str);
 
 // Parses IPv4 address string, returns parsed length or 0 on failure
-size_t      net_parse_ipv4(net_addr_t* addr, const char* str);
+uint64_t      net_parse_ipv4(net_addr_t* addr, const char* str);
 
 // Parses string with IPv4/IPv6 and/or port, returns parsed length or 0 on failure
-size_t      net_parse_addr(net_addr_t* addr, const char* str);
+uint64_t      net_parse_addr(net_addr_t* addr, const char* str);
 
 // TCP Sockets
 
@@ -66,15 +66,15 @@ bool        net_tcp_sockpair(net_sock_t* pair[2]);
 bool        net_tcp_status(net_sock_t* sock);   // Connected & not yet closed on both sides
 bool        net_tcp_shutdown(net_sock_t* sock); // Send EOF (FIN), only recv() works afterwards
 
-int32_t     net_tcp_send(net_sock_t* sock, const void* buffer, size_t size);
-int32_t     net_tcp_recv(net_sock_t* sock, void* buffer, size_t size);
+int32_t     net_tcp_send(net_sock_t* sock, const void* buffer, uint64_t size);
+int32_t     net_tcp_recv(net_sock_t* sock, void* buffer, uint64_t size);
 
 // UDP Sockets
 
 net_sock_t* net_udp_bind(const net_addr_t* addr);
 
-size_t      net_udp_send(net_sock_t* sock, const void* buffer, size_t size, const net_addr_t* addr);
-int32_t     net_udp_recv(net_sock_t* sock, void* buffer, size_t size, net_addr_t* addr);
+uint64_t      net_udp_send(net_sock_t* sock, const void* buffer, uint64_t size, const net_addr_t* addr);
+int32_t     net_udp_recv(net_sock_t* sock, void* buffer, uint64_t size, net_addr_t* addr);
 
 // Generic socket operations
 
@@ -108,7 +108,7 @@ bool        net_poll_add(net_poll_t* poll, net_sock_t* sock, const net_event_t* 
 bool        net_poll_mod(net_poll_t* poll, net_sock_t* sock, const net_event_t* event);
 bool        net_poll_remove(net_poll_t* poll, net_sock_t* sock);
 
-size_t      net_poll_wait(net_poll_t* poll, net_event_t* events, size_t size, uint32_t wait_ms);
+uint64_t      net_poll_wait(net_poll_t* poll, net_event_t* events, uint64_t size, uint32_t wait_ms);
 
 void        net_poll_close(net_poll_t* poll);
 

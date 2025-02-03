@@ -25,7 +25,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #define VM_PTR_REG RISCV_REG_A0
 #endif
 
-static inline size_t rvjit_native_default_hregmask(void)
+static inline uint64_t rvjit_native_default_hregmask(void)
 {
     // t0-t6, a0-a7 are caller-saved
     // a0 is preserved as vmptr
@@ -45,7 +45,7 @@ static inline size_t rvjit_native_default_hregmask(void)
            rvjit_hreg_mask(31);
 }
 
-static inline size_t rvjit_native_abireclaim_hregmask(void)
+static inline uint64_t rvjit_native_abireclaim_hregmask(void)
 {
     // We have enough caller-saved registers, no need for push/pop as well
     return 0;
@@ -381,9 +381,9 @@ static inline void rvjit_native_setregw(rvjit_block_t* block, regid_t reg, uintp
 static inline void rvjit_native_callreg(rvjit_block_t* block, regid_t reg)
 {
     rvjit_riscv_i_op(block, RISCV_I_ADDI, RISCV_REG_SP, RISCV_REG_SP, -16);
-    rvjit_riscv_s_op(block, RISCV_S_SIZET, RISCV_REG_RA, RISCV_REG_SP, 16 - sizeof(size_t));
+    rvjit_riscv_s_op(block, RISCV_S_SIZET, RISCV_REG_RA, RISCV_REG_SP, 16 - sizeof(uint64_t));
     rvjit_riscv_i_op(block, RISCV_I_JALR, RISCV_REG_RA, reg, 0);
-    rvjit_riscv_s_op(block, RISCV_L_SIZET, RISCV_REG_RA, RISCV_REG_SP, 16 - sizeof(size_t));
+    rvjit_riscv_s_op(block, RISCV_L_SIZET, RISCV_REG_RA, RISCV_REG_SP, 16 - sizeof(uint64_t));
     rvjit_riscv_i_op(block, RISCV_I_ADDI, RISCV_REG_SP, RISCV_REG_SP, 16);
 }
 
@@ -480,7 +480,7 @@ static inline void rvjit_patchable_ret(rvjit_block_t* block)
 // Used to check interrupts in block linkage
 static inline void rvjit_tail_bnez(rvjit_block_t* block, regid_t addr, int32_t offset)
 {
-    size_t offset_fixup = block->size;
+    uint64_t offset_fixup = block->size;
     int32_t off;
     regid_t tmp = rvjit_claim_hreg(block);
     rvjit_riscv_i_op(block, RISCV_I_LW, tmp, addr, 0);

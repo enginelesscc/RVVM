@@ -12,7 +12,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "utils.h"
 #include "mem_ops.h"
 
-void ringbuf_create(ringbuf_t* rb, size_t size)
+void ringbuf_create(ringbuf_t* rb, uint64_t size)
 {
     rb->data = safe_new_arr(uint8_t, size);
     rb->size = size;
@@ -28,57 +28,57 @@ void ringbuf_destroy(ringbuf_t* rb)
     free(rb->data);
 }
 
-size_t ringbuf_space(ringbuf_t* rb)
+uint64_t ringbuf_space(ringbuf_t* rb)
 {
     return rb->size - rb->consumed;
 }
 
-size_t ringbuf_avail(ringbuf_t* rb)
+uint64_t ringbuf_avail(ringbuf_t* rb)
 {
     return rb->consumed;
 }
 
-size_t ringbuf_skip(ringbuf_t* rb, size_t len)
+uint64_t ringbuf_skip(ringbuf_t* rb, uint64_t len)
 {
-    size_t skip = EVAL_MIN(len, rb->consumed);
+    uint64_t skip = EVAL_MIN(len, rb->consumed);
     rb->consumed -= skip;
     return skip;
 }
 
-static inline size_t ringbuf_get_read_start(ringbuf_t* rb)
+static inline uint64_t ringbuf_get_read_start(ringbuf_t* rb)
 {
     return rb->consumed > rb->start
         ? (rb->size - rb->consumed + rb->start)
         : (rb->start - rb->consumed);
 }
 
-size_t ringbuf_peek(ringbuf_t* rb, void* data, size_t len)
+uint64_t ringbuf_peek(ringbuf_t* rb, void* data, uint64_t len)
 {
-    size_t start = ringbuf_get_read_start(rb);
-    size_t ret = EVAL_MIN(rb->consumed, len);
-    size_t lhalf_len = EVAL_MIN(rb->size - start, ret);
+    uint64_t start = ringbuf_get_read_start(rb);
+    uint64_t ret = EVAL_MIN(rb->consumed, len);
+    uint64_t lhalf_len = EVAL_MIN(rb->size - start, ret);
     memcpy(data, ((uint8_t*)rb->data) + start, lhalf_len);
     if (ret > lhalf_len) {
-        size_t rhalf_len = ret - lhalf_len;
+        uint64_t rhalf_len = ret - lhalf_len;
         memcpy(((uint8_t*)data) + lhalf_len, rb->data, rhalf_len);
     }
     return ret;
 }
 
-size_t ringbuf_read(ringbuf_t* rb, void* data, size_t len)
+uint64_t ringbuf_read(ringbuf_t* rb, void* data, uint64_t len)
 {
-    size_t ret = ringbuf_peek(rb, data, len);
+    uint64_t ret = ringbuf_peek(rb, data, len);
     ringbuf_skip(rb, ret);
     return ret;
 }
 
-size_t ringbuf_write(ringbuf_t* rb, const void* data, size_t len)
+uint64_t ringbuf_write(ringbuf_t* rb, const void* data, uint64_t len)
 {
-    size_t ret = EVAL_MIN(rb->size - rb->consumed, len);
-    size_t lhalf_len = EVAL_MIN(rb->size - rb->start, ret);
+    uint64_t ret = EVAL_MIN(rb->size - rb->consumed, len);
+    uint64_t lhalf_len = EVAL_MIN(rb->size - rb->start, ret);
     memcpy(((uint8_t*)rb->data) + rb->start, data, lhalf_len);
     if (ret > lhalf_len) {
-        size_t rhalf_len = ret - lhalf_len;
+        uint64_t rhalf_len = ret - lhalf_len;
         memcpy(rb->data, ((const uint8_t*)data) + lhalf_len, rhalf_len);
         rb->start = rhalf_len;
     } else {
@@ -88,7 +88,7 @@ size_t ringbuf_write(ringbuf_t* rb, const void* data, size_t len)
     return ret;
 }
 
-bool ringbuf_get(ringbuf_t* rb, void* data, size_t len)
+bool ringbuf_get(ringbuf_t* rb, void* data, uint64_t len)
 {
     if (len <= ringbuf_avail(rb)) {
         ringbuf_read(rb, data, len);
@@ -97,7 +97,7 @@ bool ringbuf_get(ringbuf_t* rb, void* data, size_t len)
     return false;
 }
 
-bool ringbuf_put(ringbuf_t* rb, const void* data, size_t len)
+bool ringbuf_put(ringbuf_t* rb, const void* data, uint64_t len)
 {
     if (len <= ringbuf_space(rb)) {
         ringbuf_write(rb, data, len);

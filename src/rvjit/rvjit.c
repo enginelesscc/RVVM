@@ -21,7 +21,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 #include <pthread.h>
 #define RVJIT_APPLE_SILICON
-void sys_icache_invalidate(void* start, size_t len);
+void sys_icache_invalidate(void* start, uint64_t len);
 #endif
 
 #if defined(RVJIT_RISCV) && defined(__linux__)
@@ -43,13 +43,13 @@ void sys_icache_invalidate(void* start, size_t len);
  * use incorrect cacheline sizes on buggy big.LITTLE hardware.
  * TODO: Figure out proper cacheline from the kernel somehow?
  */
-static inline void rvjit_arm64_fluch_icache(const void* addr, size_t size)
+static inline void rvjit_arm64_fluch_icache(const void* addr, uint64_t size)
 {
-    size_t dsize = 64, isize = 64;
-    size_t end = ((size_t)addr) + size;
+    uint64_t dsize = 64, isize = 64;
+    uint64_t end = ((uint64_t)addr) + size;
 
     // Drain data cache
-    for (size_t cl = align_size_down((size_t)addr, dsize); cl < end; cl += dsize) {
+    for (uint64_t cl = align_size_down((uint64_t)addr, dsize); cl < end; cl += dsize) {
         // Use "dc civac" instead of "dc cvau", as this is the suggested workaround for
         // Cortex-A53 errata 819472, 826319, 827319 and 824069.
         __asm__ volatile ("dc civac, %0" : : "r" (cl) : "memory");
@@ -57,7 +57,7 @@ static inline void rvjit_arm64_fluch_icache(const void* addr, size_t size)
     // Store barrier
     __asm__ volatile ("dsb ish" : : : "memory");
     // Flush instruction cache
-    for (size_t cl = align_size_down((size_t)addr, isize); cl < end; cl += isize) {
+    for (uint64_t cl = align_size_down((uint64_t)addr, isize); cl < end; cl += isize) {
         __asm__ volatile ("ic ivau, %0" : : "r" (cl) : "memory");
     }
     // Load/store barrier
@@ -73,7 +73,7 @@ static inline void rvjit_arm64_fluch_icache(const void* addr, size_t size)
 
 #endif
 
-static void rvjit_flush_icache(const void* addr, size_t size)
+static void rvjit_flush_icache(const void* addr, uint64_t size)
 {
 #ifdef RVJIT_X86
     // x86 has coherent instruction caches
@@ -97,7 +97,7 @@ static void rvjit_flush_icache(const void* addr, size_t size)
 #endif
 }
 
-bool rvjit_ctx_init(rvjit_block_t* block, size_t size)
+bool rvjit_ctx_init(rvjit_block_t* block, uint64_t size)
 {
     // Assume it's already inited
     if (block->heap.data) return true;
@@ -139,7 +139,7 @@ bool rvjit_ctx_init(rvjit_block_t* block, size_t size)
     return true;
 }
 
-void rvjit_init_memtracking(rvjit_block_t* block, size_t size)
+void rvjit_init_memtracking(rvjit_block_t* block, uint64_t size)
 {
     // Each dirty page is marked in atomic bitmask
     free(block->heap.dirty_pages);
@@ -179,14 +179,14 @@ void rvjit_ctx_free(rvjit_block_t* block)
 static inline void rvjit_mark_jited_page(rvjit_block_t* block, rvjit_addr_t addr)
 {
     if (block->heap.jited_pages == NULL) return;
-    size_t offset = (addr >> 17) & block->heap.dirty_mask;
+    uint64_t offset = (addr >> 17) & block->heap.dirty_mask;
     uint32_t mask = 1U << ((addr >> 12) & 0x1F);
     atomic_or_uint32_ex(block->heap.jited_pages + offset, mask, ATOMIC_RELAXED);
 }
 
 static inline void rvjit_mark_dirty_page(rvjit_block_t* block, rvjit_addr_t addr)
 {
-    size_t offset = (addr >> 17) & block->heap.dirty_mask;
+    uint64_t offset = (addr >> 17) & block->heap.dirty_mask;
     uint32_t mask = 1U << ((addr >> 12) & 0x1F);
     if (atomic_load_uint32_ex(block->heap.jited_pages + offset, ATOMIC_RELAXED) & mask) {
         atomic_or_uint32_ex(block->heap.dirty_pages + offset, mask, ATOMIC_RELAXED);
@@ -194,17 +194,17 @@ static inline void rvjit_mark_dirty_page(rvjit_block_t* block, rvjit_addr_t addr
     }
 }
 
-void rvjit_mark_dirty_mem(rvjit_block_t* block, rvjit_addr_t addr, size_t size)
+void rvjit_mark_dirty_mem(rvjit_block_t* block, rvjit_addr_t addr, uint64_t size)
 {
     if (block->heap.dirty_pages == NULL) return;
-    for (size_t i=0; i<size; i += 4096) {
+    for (uint64_t i=0; i<size; i += 4096) {
         rvjit_mark_dirty_page(block, addr + i);
     }
 }
 
 static inline bool rvjit_page_needs_flush(rvjit_block_t* block, rvjit_addr_t addr)
 {
-    size_t offset = (addr >> 17) & block->heap.dirty_mask;
+    uint64_t offset = (addr >> 17) & block->heap.dirty_mask;
     uint32_t mask = 1U << ((addr >> 12) & 0x1F);
     if (block->heap.dirty_pages == NULL) return false;
     return (atomic_load_uint32_ex(block->heap.dirty_pages + offset, ATOMIC_RELAXED) & mask)
@@ -238,18 +238,18 @@ rvjit_func_t rvjit_block_finalize(rvjit_block_t* block)
     memcpy(dest, block->code, block->size);
     block->heap.curr += block->size;
 
-    hashmap_put(&block->heap.blocks, block->phys_pc, (size_t)code);
+    hashmap_put(&block->heap.blocks, block->phys_pc, (uint64_t)code);
 
 #ifdef RVJIT_NATIVE_LINKER
     vector_t(uint8_t*)* linked_blocks = NULL;
     vector_foreach(block->links, i) {
         rvjit_addr_t k = vector_at(block->links, i).dest;
-        size_t v = vector_at(block->links, i).ptr;
+        uint64_t v = vector_at(block->links, i).ptr;
         linked_blocks = (void*)hashmap_get(&block->heap.block_links, k);
         if (!linked_blocks) {
             linked_blocks = safe_calloc(1, sizeof(vector_t(uint8_t*)));
             vector_init(*linked_blocks);
-            hashmap_put(&block->heap.block_links, k, (size_t)linked_blocks);
+            hashmap_put(&block->heap.block_links, k, (uint64_t)linked_blocks);
         }
         vector_push_back(*linked_blocks, (uint8_t*)v);
     }
@@ -258,7 +258,7 @@ rvjit_func_t rvjit_block_finalize(rvjit_block_t* block)
     if (linked_blocks) {
         vector_foreach(*linked_blocks, i) {
             uint8_t* jptr = vector_at(*linked_blocks, i);
-            rvjit_linker_patch_jmp(jptr, ((size_t)dest) - ((size_t)jptr));
+            rvjit_linker_patch_jmp(jptr, ((uint64_t)dest) - ((uint64_t)jptr));
 #ifndef RVJIT_GLOBAL_ICACHE_FLUSH
             rvjit_flush_icache(jptr, 8);
 #endif
@@ -286,7 +286,7 @@ rvjit_func_t rvjit_block_lookup(rvjit_block_t* block, rvjit_addr_t phys_pc)
         vector_t(uint8_t*)* linked_blocks;
         phys_pc &= ~0xFFFULL;
 
-        for (size_t i=0; i<4096; ++i) {
+        for (uint64_t i=0; i<4096; ++i) {
             hashmap_remove(&block->heap.blocks, phys_pc + i);
             linked_blocks = (void*)hashmap_get(&block->heap.block_links, phys_pc + i);
             if (linked_blocks) {
@@ -314,7 +314,7 @@ void rvjit_flush_cache(rvjit_block_t* block)
     rvjit_linker_cleanup(block);
 
     if (block->heap.dirty_pages) {
-        for (size_t i=0; i<=block->heap.dirty_mask; ++i) {
+        for (uint64_t i=0; i<=block->heap.dirty_mask; ++i) {
             atomic_store_uint32_ex(block->heap.dirty_pages + i, 0, ATOMIC_RELAXED);
         }
     }

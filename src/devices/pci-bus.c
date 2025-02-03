@@ -143,16 +143,16 @@ struct rvvm_pci_bus {
     rvvm_irq_t irqs[PCI_BUS_IRQS];
 
     rvvm_addr_t io_addr;
-    size_t      io_len;
+    uint64_t      io_len;
     rvvm_addr_t mem_addr;
-    size_t      mem_len;
+    uint64_t      mem_len;
 };
 
 // Free a PCI function description that we've failed to attach
 static void pci_free_func_desc(const pci_func_desc_t* desc)
 {
     if (desc) {
-        for (size_t bar_id = 0; bar_id < PCI_FUNC_BARS; ++bar_id) {
+        for (uint64_t bar_id = 0; bar_id < PCI_FUNC_BARS; ++bar_id) {
             rvvm_cleanup_mmio_desc(&desc->bar[bar_id]);
         }
     }
@@ -162,19 +162,19 @@ static void pci_free_func_desc(const pci_func_desc_t* desc)
 static void pci_free_dev_desc(const pci_dev_desc_t* desc)
 {
     if (desc) {
-        for (size_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
+        for (uint64_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
             pci_free_func_desc(desc->func[func_id]);
         }
     }
 }
 
 // Linearize PCI bus addesses into internal vector
-static inline size_t pci_bus_addr_to_id_internal(pci_bus_addr_t bus_addr)
+static inline uint64_t pci_bus_addr_to_id_internal(pci_bus_addr_t bus_addr)
 {
     return (bus_addr < 0x100) ? (bus_addr >> 3) : ((bus_addr >> 8) + PCI_BUS_DEVS);
 }
 
-static inline size_t pci_bus_addr_valid(pci_bus_addr_t bus_addr)
+static inline uint64_t pci_bus_addr_valid(pci_bus_addr_t bus_addr)
 {
     return (bus_addr < 0x100) || !(bus_addr & 0xF8);
 }
@@ -182,7 +182,7 @@ static inline size_t pci_bus_addr_valid(pci_bus_addr_t bus_addr)
 // Assign a PCI device handle to a PCI slot (Must be called under locking)
 static inline bool pci_set_bus_dev_internal(pci_bus_t* bus, pci_bus_addr_t bus_addr, pci_dev_t* dev)
 {
-    size_t dev_id = pci_bus_addr_to_id_internal(bus_addr);
+    uint64_t dev_id = pci_bus_addr_to_id_internal(bus_addr);
     if (bus && (dev_id >= vector_size(bus->dev) || (!!vector_at(bus->dev, dev_id) != !!dev))) {
         vector_put(bus->dev, dev_id, dev);
         return true;
@@ -196,7 +196,7 @@ static void pci_free_func_internal(pci_func_t* func, bool remove_mmio)
     if (func) {
         if (remove_mmio) {
             // Omit double-removing MMIO on final machine cleanup stage
-            for (size_t bar_id = 0; bar_id < PCI_FUNC_BARS; ++bar_id) {
+            for (uint64_t bar_id = 0; bar_id < PCI_FUNC_BARS; ++bar_id) {
                 rvvm_remove_mmio(func->bar[bar_id]);
             }
         }
@@ -208,7 +208,7 @@ static void pci_free_func_internal(pci_func_t* func, bool remove_mmio)
 static void pci_free_dev_internal(pci_dev_t* dev, bool remove_mmio)
 {
     if (dev) {
-        for (size_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
+        for (uint64_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
             pci_free_func_internal(dev->func[func_id], remove_mmio);
         }
         free(dev);
@@ -229,9 +229,9 @@ static inline rvvm_irq_t pci_func_intx_irq(pci_func_t* func)
 }
 
 // Assign MMIO address for a BAR
-static rvvm_addr_t pci_assign_mmio_addr(pci_bus_t* bus, size_t bar_size)
+static rvvm_addr_t pci_assign_mmio_addr(pci_bus_t* bus, uint64_t bar_size)
 {
-    size_t align_size = bit_next_pow2(EVAL_MAX(bar_size, 0x1000));
+    uint64_t align_size = bit_next_pow2(EVAL_MAX(bar_size, 0x1000));
     rvvm_addr_t addr = bus->mem_addr;
     while (true) {
         rvvm_addr_t tmp = rvvm_mmio_zone_auto(bus->machine, addr, align_size);
@@ -267,7 +267,7 @@ static pci_func_t* pci_attach_func_internal(pci_bus_t* bus, const pci_func_desc_
     func->command  = PCI_CMD_DEFAULT;
     func->irq_line = pci_func_intx_irq(func);
 
-    for (size_t bar_id = 0; bar_id < PCI_FUNC_BARS; ++bar_id) {
+    for (uint64_t bar_id = 0; bar_id < PCI_FUNC_BARS; ++bar_id) {
         if (desc->bar[bar_id].size) {
             func->bar[bar_id] = pci_attach_bar(bus, desc->bar[bar_id]);
             if (func->bar[bar_id] == NULL) {
@@ -291,19 +291,19 @@ static pci_func_t* pci_attach_func_internal(pci_bus_t* bus, const pci_func_desc_
 }
 
 // Check whether this BAR is an upper half for a previous 64-bit BAR
-static inline size_t pci_bar_is_upper_half(pci_func_t* func, size_t bar_id)
+static inline uint64_t pci_bar_is_upper_half(pci_func_t* func, uint64_t bar_id)
 {
     return bar_id && !func->bar[bar_id] && func->bar[bar_id - 1];
 }
 
 // Check whether this BAR is eligible to be 64-bit wide
-static inline bool pci_bar_is_64bit(pci_func_t* func, size_t bar_id)
+static inline bool pci_bar_is_64bit(pci_func_t* func, uint64_t bar_id)
 {
     return bar_id + 1 < PCI_FUNC_BARS && func->bar[bar_id] && !func->bar[bar_id + 1];
 }
 
 // Get effective BAR (Returns same device bar for low/high parts)
-static inline rvvm_mmio_dev_t* pci_effective_bar(pci_func_t* func, size_t bar_id)
+static inline rvvm_mmio_dev_t* pci_effective_bar(pci_func_t* func, uint64_t bar_id)
 {
     if (pci_bar_is_upper_half(func, bar_id)) {
         return func->bar[bar_id - 1];
@@ -311,11 +311,11 @@ static inline rvvm_mmio_dev_t* pci_effective_bar(pci_func_t* func, size_t bar_id
     return func->bar[bar_id];
 }
 
-static bool pci_bus_read(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, uint8_t size)
+static bool pci_bus_read(rvvm_mmio_dev_t* mmio_dev, void* data, uint64_t offset, uint8_t size)
 {
     pci_bus_t* bus = mmio_dev->data;
     pci_bus_addr_t bus_addr = offset >> 12;
-    size_t reg = offset & 0xFFC;
+    uint64_t reg = offset & 0xFFC;
     uint32_t val = 0;
     UNUSED(size);
 
@@ -349,7 +349,7 @@ static bool pci_bus_read(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, u
             // Advertise 64-byte cache lines
             val = 16;
             pci_dev_t* dev = pci_get_bus_device(bus, bus_addr);
-            for (size_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
+            for (uint64_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
                 if (pci_get_device_func(dev, func_id) && (func_id != (bus_addr & 0x7))) {
                     // This is a multi-function device
                     val |= (PCI_HEADER_MULTIFUNC << 16);
@@ -420,7 +420,7 @@ static bool pci_bus_read(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, u
         default:
             if (bus_addr) {
                 // Handle PCI capabilities
-                size_t cap_id = (reg - PCI_CAP_LIST_OFF) >> 2;
+                uint64_t cap_id = (reg - PCI_CAP_LIST_OFF) >> 2;
                 if (cap_id < STATIC_ARRAY_SIZE(pci_express_caps_ro)) {
                     val = pci_express_caps_ro[cap_id];
                 }
@@ -456,11 +456,11 @@ static bool pci_bus_read(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, u
     return true;
 }
 
-static bool pci_bus_write(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, uint8_t size)
+static bool pci_bus_write(rvvm_mmio_dev_t* mmio_dev, void* data, uint64_t offset, uint8_t size)
 {
     pci_bus_t* bus = mmio_dev->data;
     pci_bus_addr_t bus_addr = offset >> 12;
-    size_t reg = offset & 0xFFC;
+    uint64_t reg = offset & 0xFFC;
     uint32_t val = read_uint32_le(data);
     UNUSED(size);
 
@@ -486,7 +486,7 @@ static bool pci_bus_write(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, 
                 rvvm_mmio_dev_t* bar = pci_effective_bar(func, bar_id);
                 if (bar) {
                     rvvm_addr_t bar_addr = bar->addr;
-                    size_t bar_size = bit_next_pow2(bar->size);
+                    uint64_t bar_size = bit_next_pow2(bar->size);
                     if (pci_bar_is_upper_half(func, bar_id)) {
                         // This is an upper half of a 64-bit BAR
                         bar_addr = bit_replace(bar_addr, 32, 32, val);
@@ -515,7 +515,7 @@ static bool pci_bus_write(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, 
         case PCI_REG_EXPANSION_ROM:
             if (func->expansion_rom) {
                 rvvm_addr_t rom_addr = val & ~0xFFFU;
-                size_t rom_size = bit_next_pow2(func->expansion_rom->size);
+                uint64_t rom_size = bit_next_pow2(func->expansion_rom->size);
                 func->expansion_rom->addr = rom_addr & ~(rom_size - 1);
                 atomic_fence();
             }
@@ -526,7 +526,7 @@ static bool pci_bus_write(rvvm_mmio_dev_t* mmio_dev, void* data, size_t offset, 
         default:
             if (bus_addr) {
                 // Handle PCI capabilities
-                size_t cap_id = (reg - PCI_CAP_LIST_OFF) >> 2;
+                uint64_t cap_id = (reg - PCI_CAP_LIST_OFF) >> 2;
                 switch (cap_id) {
                     case 0x14: // MSI enable
                         atomic_store_uint32_relax(&func->msi_enable, val & 0x10000);
@@ -564,15 +564,15 @@ static const rvvm_mmio_type_t pci_bus_type = {
 };
 
 PUBLIC pci_bus_t* pci_bus_init(rvvm_machine_t* machine, rvvm_intc_t* intc, const rvvm_irq_t* irqs,
-                               rvvm_addr_t ecam_addr, size_t bus_count,
-                               rvvm_addr_t io_addr,   size_t io_len,
-                               rvvm_addr_t mem_addr,  size_t mem_len)
+                               rvvm_addr_t ecam_addr, uint64_t bus_count,
+                               rvvm_addr_t io_addr,   uint64_t io_len,
+                               rvvm_addr_t mem_addr,  uint64_t mem_len)
 {
     pci_bus_t* bus = safe_new_obj(pci_bus_t);
     bus->machine = machine;
     bus->intc = intc;
 
-    for (size_t i = 0; i < PCI_BUS_IRQS; ++i) {
+    for (uint64_t i = 0; i < PCI_BUS_IRQS; ++i) {
         bus->irqs[i] = irqs[i];
     }
 
@@ -650,7 +650,7 @@ PUBLIC pci_bus_t* pci_bus_init(rvvm_machine_t* machine, rvvm_intc_t* intc, const
         for (uint32_t irq_pin = 1; irq_pin <= PCI_BUS_IRQS; ++ irq_pin) {
             rvvm_irq_t irq = pci_bus_intx_irq(bus, dev_id, irq_pin);
             uint32_t cells[8] = {0};
-            size_t count = rvvm_fdt_irq_cells(intc, irq, cells, STATIC_ARRAY_SIZE(cells));
+            uint64_t count = rvvm_fdt_irq_cells(intc, irq, cells, STATIC_ARRAY_SIZE(cells));
 
             // PCI address
             vector_push_back(irq_map, dev_id << 11);
@@ -664,7 +664,7 @@ PUBLIC pci_bus_t* pci_bus_init(rvvm_machine_t* machine, rvvm_intc_t* intc, const
             vector_push_back(irq_map, intc_handle);
 
             // Interrupt cells
-            for (size_t cell = 0; cell < count; ++cell) {
+            for (uint64_t cell = 0; cell < count; ++cell) {
                 vector_push_back(irq_map, cells[cell]);
             }
         }
@@ -685,9 +685,9 @@ PUBLIC pci_bus_t* pci_bus_init_auto(rvvm_machine_t* machine)
 {
     rvvm_intc_t* intc = rvvm_get_intc(machine);
     rvvm_irq_t irqs[PCI_BUS_IRQS] = {0};
-    size_t bus_count = 256;
+    uint64_t bus_count = 256;
     rvvm_addr_t addr = rvvm_mmio_zone_auto(machine, PCI_ECAM_ADDR_DEFAULT, bus_count << 20);
-    for (size_t i = 0; i < PCI_BUS_IRQS; ++i) {
+    for (uint64_t i = 0; i < PCI_BUS_IRQS; ++i) {
         irqs[i] = rvvm_alloc_irq(intc);
     }
     return pci_bus_init(machine, intc, irqs, addr, bus_count,
@@ -770,7 +770,7 @@ PUBLIC pci_dev_t* pci_attach_multifunc_at(pci_bus_t* bus, const pci_dev_desc_t* 
     dev->bus = bus;
     dev->addr = bus_addr;
 
-    for (size_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
+    for (uint64_t func_id = 0; func_id < PCI_DEV_FUNCS; ++func_id) {
         if (desc->func[func_id]) {
             pci_func_t* func = pci_attach_func_internal(bus, desc->func[func_id], bus_addr + func_id);
             dev->func[func_id] = func;
@@ -799,7 +799,7 @@ PUBLIC pci_dev_t* pci_attach_multifunc_at(pci_bus_t* bus, const pci_dev_desc_t* 
 
 PUBLIC pci_dev_t* pci_get_bus_device(pci_bus_t* bus, pci_bus_addr_t bus_addr)
 {
-    size_t dev_id = pci_bus_addr_to_id_internal(bus_addr);
+    uint64_t dev_id = pci_bus_addr_to_id_internal(bus_addr);
     pci_dev_t* dev = NULL;
     if (bus && pci_bus_addr_valid(bus_addr)) {
         spin_lock(&bus->lock);
@@ -846,7 +846,7 @@ PUBLIC void pci_remove_device(pci_dev_t* dev)
     }
 }
 
-PUBLIC pci_func_t* pci_get_device_func(pci_dev_t* dev, size_t func_id)
+PUBLIC pci_func_t* pci_get_device_func(pci_dev_t* dev, uint64_t func_id)
 {
     if (dev) {
         return dev->func[func_id];
@@ -872,7 +872,7 @@ PUBLIC void pci_send_irq(pci_func_t* func, uint32_t msi_id)
     }
 }
 
-PUBLIC void* pci_get_dma_ptr(pci_func_t* func, rvvm_addr_t addr, size_t size)
+PUBLIC void* pci_get_dma_ptr(pci_func_t* func, rvvm_addr_t addr, uint64_t size)
 {
     if (likely(func && (atomic_load_uint32_relax(&func->command) & PCI_CMD_BUS_MASTER))) {
         // DMA requires bus mastering to be enabled

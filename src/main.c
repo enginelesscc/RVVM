@@ -152,7 +152,7 @@ static bool rvvm_cli_configure(rvvm_machine_t* machine, const char* bios, tap_de
                 }
                 ns16550a_init_auto(machine, chardev);
             } else if (rvvm_strcmp(arg_name, "res")) {
-                size_t len = 0;
+                uint64_t len = 0;
                 uint32_t fb_x = str_to_uint_base(arg_val, &len, 10);
                 uint32_t fb_y = str_to_uint_base(arg_val + len + 1, NULL, 10);
                 if (arg_val[len] != 'x') fb_y = 0;
@@ -187,11 +187,11 @@ static int rvvm_cli_main(int argc, char** argv)
     }
 
     // Default machine parameters: 1 core, 256M ram, riscv64, 640x480 screen
-    size_t    mem = rvvm_getarg_size("m");
+    uint64_t    mem = rvvm_getarg_size("m");
     if (!mem) mem = rvvm_getarg_size("mem");
     if (!mem) mem = (256 << 20);
 
-    size_t    smp = rvvm_getarg_int("s");
+    uint64_t    smp = rvvm_getarg_int("s");
     if (!smp) smp = rvvm_getarg_int("smp");
     if (!smp) smp = 1;
 
@@ -292,7 +292,7 @@ int main(int argc, char** argv)
     LPWSTR* argv_u16 = CommandLineToArgvW(GetCommandLineW(), &argc);
     argv = safe_new_arr(char*, argc + 1);
     for (int i=0; i<argc; ++i) {
-        size_t arg_len = WideCharToMultiByte(CP_UTF8, 0, argv_u16[i], -1, NULL, 0, NULL, NULL);
+        uint64_t arg_len = WideCharToMultiByte(CP_UTF8, 0, argv_u16[i], -1, NULL, 0, NULL, NULL);
         argv[i] = safe_new_arr(char, arg_len);
         WideCharToMultiByte(CP_UTF8, 0, argv_u16[i], -1, argv[i], arg_len, NULL, NULL);
     }

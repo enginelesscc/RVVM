@@ -43,7 +43,7 @@ void riscv_jit_flush_cache(rvvm_hart_t* vm)
 
 #ifdef USE_JIT
 
-void riscv_jit_mark_dirty_mem(rvvm_machine_t* machine, rvvm_addr_t addr, size_t size)
+void riscv_jit_mark_dirty_mem(rvvm_machine_t* machine, rvvm_addr_t addr, uint64_t size)
 {
     vector_foreach(machine->harts, i) {
         rvjit_mark_dirty_mem(&vector_at(machine->harts, i)->jit, addr, size);
@@ -113,7 +113,7 @@ slow_path bool riscv_jit_tlb_lookup(rvvm_hart_t* vm)
         if (likely(riscv_jtlb_lookup(vm))) {
 #ifndef RVJIT_NATIVE_LINKER
             // Try to execute more blocks if they aren't linked
-            for (size_t i=0; i<10 && riscv_jtlb_lookup(vm); ++i);
+            for (uint64_t i=0; i<10 && riscv_jtlb_lookup(vm); ++i);
 #endif
             return true;
         } else {

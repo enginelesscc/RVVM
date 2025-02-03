@@ -85,7 +85,7 @@ static bool plic_notify_ctx_irq(plic_ctx_t* plic, uint32_t ctx, uint32_t irq)
 // Notify any hart responsible for this IRQ
 static void plic_notify_irq(plic_ctx_t* plic, uint32_t irq)
 {
-    for (size_t ctx=0; ctx<plic_ctx_count(plic); ++ctx) {
+    for (uint64_t ctx=0; ctx<plic_ctx_count(plic); ++ctx) {
         if (plic_notify_ctx_irq(plic, ctx, irq)) return;
     }
 }
@@ -103,7 +103,7 @@ static void plic_update_ctx_irq_reg(plic_ctx_t* plic, uint32_t ctx, uint32_t reg
 {
     uint32_t irqs = atomic_load_uint32(&plic->pending[reg]) & atomic_load_uint32(&plic->enable[ctx][reg]);
     if (irqs) {
-        for (size_t i=0; i<32; ++i) {
+        for (uint64_t i=0; i<32; ++i) {
             plic_update_irq(plic, (reg << 5) | i);
         }
     }
@@ -119,10 +119,10 @@ static uint32_t plic_update_ctx(plic_ctx_t* plic, uint32_t ctx, bool claim)
 
     riscv_interrupt_clear(vector_at(plic->machine->harts, plic_ctx_hartid(ctx)), plic_ctx_prio(ctx));
 
-    for (size_t i = 0; i < PLIC_SRC_REGS; ++i) {
+    for (uint64_t i = 0; i < PLIC_SRC_REGS; ++i) {
         uint32_t irqs = atomic_load_uint32(&plic->pending[i]) & atomic_load_uint32(&plic->enable[ctx][i]);
         if (irqs) {
-            for (size_t j=0; j<32; ++j) {
+            for (uint64_t j=0; j<32; ++j) {
                 if (bit_check(irqs, j)) {
                     uint32_t irq = (i << 5) | j;
                     uint32_t prio = atomic_load_uint32(&plic->prio[irq]);
@@ -161,7 +161,7 @@ static uint32_t plic_update_ctx(plic_ctx_t* plic, uint32_t ctx, bool claim)
  */
 static void plic_full_update(plic_ctx_t* plic)
 {
-    for (size_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx) {
+    for (uint64_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx) {
         plic_update_ctx(plic, ctx, false);
     }
 }
@@ -229,7 +229,7 @@ static void plic_complete_irq(plic_ctx_t* plic, uint32_t ctx, uint32_t irq)
     }
 }
 
-static bool plic_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool plic_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     plic_ctx_t* plic = dev->data;
     memset(data, 0, size);
@@ -272,7 +272,7 @@ static bool plic_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint
     return true;
 }
 
-static bool plic_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool plic_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     plic_ctx_t* plic = dev->data;
     UNUSED(size);
@@ -316,7 +316,7 @@ static void plic_remove(rvvm_mmio_dev_t* dev)
 {
     plic_ctx_t* plic = dev->data;
 
-    for (size_t ctx=0; ctx<plic_ctx_count(plic); ++ctx){
+    for (uint64_t ctx=0; ctx<plic_ctx_count(plic); ++ctx){
         free(plic->enable[ctx]);
     }
     free(plic->enable);
@@ -328,7 +328,7 @@ static void plic_reset(rvvm_mmio_dev_t* dev)
 {
     plic_ctx_t* plic = dev->data;
 
-    for (size_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx){
+    for (uint64_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx){
         riscv_interrupt_clear(vector_at(plic->machine->harts, plic_ctx_hartid(ctx)), plic_ctx_prio(ctx));
         memset(plic->enable[ctx], 0, PLIC_SRC_REGS << 2);
     }
@@ -392,7 +392,7 @@ static uint32_t plic_fdt_phandle(rvvm_intc_t* intc)
     return plic->phandle;
 }
 
-static size_t plic_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, size_t size)
+static uint64_t plic_fdt_irq_cells(rvvm_intc_t* intc, rvvm_irq_t irq, uint32_t* cells, uint64_t size)
 {
     UNUSED(intc);
     if (cells && size) {
@@ -408,7 +408,7 @@ PUBLIC rvvm_intc_t* riscv_plic_init(rvvm_machine_t* machine, rvvm_addr_t addr)
     plic->machine = machine;
     plic->enable = safe_new_arr(uint32_t*, plic_ctx_count(plic));
     plic->threshold = safe_new_arr(uint32_t, plic_ctx_count(plic));
-    for (size_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx){
+    for (uint64_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx){
         plic->enable[ctx] = safe_new_arr(uint32_t, PLIC_SRC_REGS);
     }
 

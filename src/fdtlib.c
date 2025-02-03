@@ -42,7 +42,7 @@ struct fdt_node {
     vector_t(struct fdt_node*) nodes;
 };
 
-static void* heap_duplicate(const void* data, size_t size)
+static void* heap_duplicate(const void* data, uint64_t size)
 {
     if (size) {
         void* buffer = safe_malloc(size);
@@ -63,9 +63,9 @@ static void fdt_prop_free(struct fdt_prop* prop)
     free(prop->data);
 }
 
-static size_t fdt_name_with_addr(char* buffer, size_t size, const char* name, uint64_t addr)
+static uint64_t fdt_name_with_addr(char* buffer, uint64_t size, const char* name, uint64_t addr)
 {
-    size_t len = rvvm_strlcpy(buffer, name, size);
+    uint64_t len = rvvm_strlcpy(buffer, name, size);
     len += rvvm_strlcpy(buffer + len, "@", size - len);
     len += uint_to_str_base(buffer + len, size, addr, 16);
     return len;
@@ -111,7 +111,7 @@ struct fdt_node* fdt_node_find_reg(struct fdt_node* node, const char* name, uint
 struct fdt_node* fdt_node_find_reg_any(struct fdt_node* node, const char* name)
 {
     char buffer[256] = {0};
-    size_t len = rvvm_strlcpy(buffer, name, sizeof(buffer));
+    uint64_t len = rvvm_strlcpy(buffer, name, sizeof(buffer));
     rvvm_strlcpy(buffer + len, "@", sizeof(buffer) - len);
     if (node) vector_foreach_back(node->nodes, i) {
         struct fdt_node* child = vector_at(node->nodes, i);
@@ -227,7 +227,7 @@ void* fdt_node_get_prop_data(struct fdt_node* node, const char* name)
     return NULL;
 }
 
-size_t fdt_node_get_prop_size(struct fdt_node* node, const char* name)
+uint64_t fdt_node_get_prop_size(struct fdt_node* node, const char* name)
 {
     struct fdt_prop* prop = fdt_node_find_prop(node, name);
     if (prop) {
@@ -272,7 +272,7 @@ struct fdt_size_desc {
 
 static void fdt_get_tree_size(struct fdt_node* node, struct fdt_size_desc* desc)
 {
-    size_t name_len = align_size_up(node->name ? rvvm_strlen(node->name) + 1 : 1, sizeof(uint32_t));
+    uint64_t name_len = align_size_up(node->name ? rvvm_strlen(node->name) + 1 : 1, sizeof(uint32_t));
     desc->struct_size += sizeof(uint32_t) + name_len; // FDT_BEGIN_NODE, name
 
     vector_foreach(node->props, i) {
@@ -352,12 +352,12 @@ static void fdt_serialize_tree(struct fdt_serializer_ctx *ctx, struct fdt_node *
     fdt_serialize_u32(ctx, FDT_END_NODE);
 }
 
-size_t fdt_size(struct fdt_node* node)
+uint64_t fdt_size(struct fdt_node* node)
 {
     return fdt_serialize(node, NULL, 0, 0);
 }
 
-size_t fdt_serialize(struct fdt_node* node, void* buffer, size_t size, uint32_t boot_cpuid)
+uint64_t fdt_serialize(struct fdt_node* node, void* buffer, uint64_t size, uint32_t boot_cpuid)
 {
     if (node == NULL) return 0;
     struct fdt_size_desc size_desc = {0};

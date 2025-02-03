@@ -72,7 +72,7 @@ static i2c_dev_t* i2c_oc_get_dev(i2c_bus_t* bus, uint16_t addr)
     return NULL;
 }
 
-static bool i2c_oc_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool i2c_oc_mmio_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     i2c_bus_t* bus = dev->data;
     memset(data, 0, size);
@@ -98,7 +98,7 @@ static bool i2c_oc_mmio_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, ui
     return true;
 }
 
-static bool i2c_oc_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool i2c_oc_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     i2c_bus_t* bus = dev->data;
     UNUSED(size);

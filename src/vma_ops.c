@@ -107,8 +107,8 @@ static inline int vma_native_prot(uint32_t flags)
 #include "utils.h"
 #include "blk_io.h"
 
-static size_t host_pagesize = 0;
-static size_t host_granularity = 0; // Allocation granularity, may be > pagesize
+static uint64_t host_pagesize = 0;
+static uint64_t host_granularity = 0; // Allocation granularity, may be > pagesize
 
 static void vma_page_size_init_once(void)
 {
@@ -132,24 +132,24 @@ static void vma_page_size_init(void)
     DO_ONCE(vma_page_size_init_once());
 }
 
-size_t vma_page_size(void)
+uint64_t vma_page_size(void)
 {
     vma_page_size_init();
     return host_pagesize;
 }
 
-static size_t vma_granularity(void)
+static uint64_t vma_granularity(void)
 {
     vma_page_size_init();
     return host_granularity;
 }
 
-static inline void* align_ptr_down(void* ptr, size_t align)
+static inline void* align_ptr_down(void* ptr, uint64_t align)
 {
-    return (void*)align_size_down((size_t)ptr, align);
+    return (void*)align_size_down((uint64_t)ptr, align);
 }
 
-int vma_anon_memfd(size_t size)
+int vma_anon_memfd(uint64_t size)
 {
     int memfd = -1;
     size = align_size_up(size, vma_granularity());
@@ -192,7 +192,7 @@ int vma_anon_memfd(size_t size)
         const char* xdg = getenv("XDG_RUNTIME_DIR");
         rvvm_info("Falling back to VMA file mapping, may lower perf");
         if (xdg) {
-            size_t off = rvvm_strlcpy(path, xdg, sizeof(path));
+            uint64_t off = rvvm_strlcpy(path, xdg, sizeof(path));
             off += rvvm_strlcpy(path + off, "/vma-anon-XXXXXXXX", sizeof(path) - off);
             rvvm_randomserial(path + off - 8, 8);
             if (off < 250) {
@@ -200,12 +200,12 @@ int vma_anon_memfd(size_t size)
             } else rvvm_warn("XDG_RUNTIME_DIR path too long!");
         }
         if (memfd < 0) {
-            size_t off = rvvm_strlcpy(path, "/var/tmp/vma-anon-XXXXXXXX", sizeof(path));
+            uint64_t off = rvvm_strlcpy(path, "/var/tmp/vma-anon-XXXXXXXX", sizeof(path));
             rvvm_randomserial(path + off - 8, 8);
             memfd = open(path, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
         }
         if (memfd < 0) {
-            size_t off = rvvm_strlcpy(path, "/tmp/vma-anon-XXXXXXXX", sizeof(path));
+            uint64_t off = rvvm_strlcpy(path, "/tmp/vma-anon-XXXXXXXX", sizeof(path));
             rvvm_randomserial(path + off - 8, 8);
             memfd = open(path, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
         }
@@ -245,7 +245,7 @@ bool vma_broadcast_membarrier(void)
 #endif
 #if (defined(VMA_MMAP_IMPL) || defined(VMA_WIN32_IMPL)) && !defined(__aarch64__) && !defined(_M_ARM64)
     // Most OS kernels perform an IPI for mprotect(READ), though on ARM64 this is not guaranteed due to tlbi
-    size_t page_size = vma_page_size();
+    uint64_t page_size = vma_page_size();
     void* ipi_page = vma_alloc(NULL, page_size, VMA_RDWR);
     if (ipi_page) {
         memset(ipi_page, 0, 4);
@@ -270,7 +270,7 @@ bool vma_broadcast_membarrier(void)
  * - Handle non-granular fixed-address file mappings
  */
 
-static void* vma_mmap_aligned_internal(void* addr, size_t size, uint32_t flags, rvfile_t* file, uint64_t offset)
+static void* vma_mmap_aligned_internal(void* addr, uint64_t size, uint32_t flags, rvfile_t* file, uint64_t offset)
 {
     void* ret = NULL;
 #if defined(VMA_WIN32_IMPL)
@@ -349,17 +349,17 @@ static void* vma_mmap_aligned_internal(void* addr, size_t size, uint32_t flags, 
     return ret;
 }
 
-void* vma_alloc(void* addr, size_t size, uint32_t flags)
+void* vma_alloc(void* addr, uint64_t size, uint32_t flags)
 {
     return vma_mmap(addr, size, flags, NULL, 0);
 }
 
-void* vma_mmap(void* addr, size_t size, uint32_t flags, rvfile_t* file, uint64_t offset)
+void* vma_mmap(void* addr, uint64_t size, uint32_t flags, rvfile_t* file, uint64_t offset)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_granularity() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_granularity() - 1);
     if (file) {
         // File VMA mapping
-        size_t off_diff = offset & (vma_granularity() - 1);
+        uint64_t off_diff = offset & (vma_granularity() - 1);
         offset -= off_diff;
         if (flags & VMA_FIXED) {
             if (ptr_diff != off_diff) {
@@ -397,7 +397,7 @@ void* vma_mmap(void* addr, size_t size, uint32_t flags, rvfile_t* file, uint64_t
     return ret ? (ret + ptr_diff) : NULL;
 }
 
-bool vma_multi_mmap(void** rw, void** exec, size_t size)
+bool vma_multi_mmap(void** rw, void** exec, uint64_t size)
 {
     size = align_size_up(size, vma_granularity());
 #ifdef VMA_MMAP_IMPL
@@ -428,9 +428,9 @@ bool vma_multi_mmap(void** rw, void** exec, size_t size)
 #endif
 }
 
-void* vma_remap(void* addr, size_t old_size, size_t new_size, uint32_t flags)
+void* vma_remap(void* addr, uint64_t old_size, uint64_t new_size, uint32_t flags)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_granularity() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_granularity() - 1);
     uint8_t* ret = NULL;
     addr = align_ptr_down(addr, vma_granularity());
     old_size = align_size_up(old_size + ptr_diff, vma_page_size());
@@ -474,9 +474,9 @@ void* vma_remap(void* addr, size_t old_size, size_t new_size, uint32_t flags)
     return ret ? (ret + ptr_diff) : NULL;
 }
 
-bool vma_protect(void* addr, size_t size, uint32_t flags)
+bool vma_protect(void* addr, uint64_t size, uint32_t flags)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_page_size() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_page_size() - 1);
     addr = align_ptr_down(addr, vma_page_size());
     size = align_size_up(size + ptr_diff, vma_page_size());
     if (!addr || !size) return false;
@@ -490,9 +490,9 @@ bool vma_protect(void* addr, size_t size, uint32_t flags)
 #endif
 }
 
-bool vma_sync(void* addr, size_t size)
+bool vma_sync(void* addr, uint64_t size)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_page_size() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_page_size() - 1);
     addr = align_ptr_down(addr, vma_page_size());
     size = align_size_up(size + ptr_diff, vma_page_size());
     if (!addr || !size) return false;
@@ -505,9 +505,9 @@ bool vma_sync(void* addr, size_t size)
 #endif
 }
 
-bool vma_clean(void* addr, size_t size, bool lazy)
+bool vma_clean(void* addr, uint64_t size, bool lazy)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_page_size() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_page_size() - 1);
     addr = align_ptr_down(addr, vma_page_size());
     size = align_size_up(size + ptr_diff, vma_page_size());
     if (!addr || !size) return false;
@@ -538,9 +538,9 @@ bool vma_clean(void* addr, size_t size, bool lazy)
     return lazy;
 }
 
-bool vma_pageout(void* addr, size_t size, bool lazy)
+bool vma_pageout(void* addr, uint64_t size, bool lazy)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_page_size() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_page_size() - 1);
     addr = align_ptr_down(addr, vma_page_size());
     size = align_size_up(size + ptr_diff, vma_page_size());
     if (!addr || !size) return false;
@@ -561,9 +561,9 @@ bool vma_pageout(void* addr, size_t size, bool lazy)
     return lazy;
 }
 
-bool vma_free(void* addr, size_t size)
+bool vma_free(void* addr, uint64_t size)
 {
-    size_t ptr_diff = ((size_t)addr) & (vma_granularity() - 1);
+    uint64_t ptr_diff = ((uint64_t)addr) & (vma_granularity() - 1);
     addr = align_ptr_down(addr, vma_granularity());
     size = align_size_up(size + ptr_diff, vma_page_size());
     if (!addr || !size) return false;

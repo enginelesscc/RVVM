@@ -18,17 +18,17 @@ typedef struct {
     // Receive base ELF address for userland
     void*  base;
     // Objcopy buffer size
-    size_t buf_size;
+    uint64_t buf_size;
 
     // Various loaded ELF info
-    size_t entry;
+    uint64_t entry;
     char*  interp_path;
-    size_t phdr;
-    size_t phnum;
+    uint64_t phdr;
+    uint64_t phnum;
 } elf_desc_t;
 
 bool elf_load_file(rvfile_t* file, elf_desc_t* elf);
 
-bool bin_objcopy(rvfile_t* file, void* buffer, size_t size, bool try_elf);
+bool bin_objcopy(rvfile_t* file, void* buffer, uint64_t size, bool try_elf);
 
 #endif

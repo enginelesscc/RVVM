@@ -30,10 +30,10 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
 // Get host page size
-size_t vma_page_size(void);
+uint64_t vma_page_size(void);
 
 // Create anonymous memory-backed FD (POSIX only!)
-int    vma_anon_memfd(size_t size);
+int    vma_anon_memfd(uint64_t size);
 
 // Broadcast a global memory barrier on all running threads. May fail on some host systems.
 bool   vma_broadcast_membarrier(void);
@@ -43,34 +43,34 @@ bool   vma_broadcast_membarrier(void);
  */
 
 // Allocate anonymous VMA, force needed address using VMA_FIXED
-void* vma_alloc(void* addr, size_t size, uint32_t flags);
+void* vma_alloc(void* addr, uint64_t size, uint32_t flags);
 
 // Map file into memory, acts like vma_alloc() when file == NULL
-void* vma_mmap(void* addr, size_t size, uint32_t flags, rvfile_t* file, uint64_t offset);
+void* vma_mmap(void* addr, uint64_t size, uint32_t flags, rvfile_t* file, uint64_t offset);
 
 // Create separate RW/exec VMAs (For W^X JIT)
-bool  vma_multi_mmap(void** rw, void** exec, size_t size);
+bool  vma_multi_mmap(void** rw, void** exec, uint64_t size);
 
 // Resize anon VMA, pass VMA_FIXED to make sure it stays in place
-void* vma_remap(void* addr, size_t old_size, size_t new_size, uint32_t flags);
+void* vma_remap(void* addr, uint64_t old_size, uint64_t new_size, uint32_t flags);
 
 /*
  * VMA operations
  */
 
 // Change VMA protection flags
-bool  vma_protect(void* addr, size_t size, uint32_t flags);
+bool  vma_protect(void* addr, uint64_t size, uint32_t flags);
 
 // Synchronise writes to shared file mapping
-bool  vma_sync(void* addr, size_t size);
+bool  vma_sync(void* addr, uint64_t size);
 
 // Hint to free (zero-fill) underlying memory, VMA is still intact
-bool  vma_clean(void* addr, size_t size, bool lazy);
+bool  vma_clean(void* addr, uint64_t size, bool lazy);
 
 // Hint to pageout memory, data is kept intact
-bool  vma_pageout(void* addr, size_t size, bool lazy);
+bool  vma_pageout(void* addr, uint64_t size, bool lazy);
 
 // Unmap the VMA
-bool  vma_free(void* addr, size_t size);
+bool  vma_free(void* addr, uint64_t size);
 
 #endif

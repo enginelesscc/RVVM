@@ -72,10 +72,10 @@ static void hid_keyboard_reset(void* dev)
 
 static void hid_keyboard_fill_pressed_keys(hid_keyboard_t* kb, uint8_t* pressed)
 {
-    size_t count = 0;
+    uint64_t count = 0;
     memset(pressed, HID_KEY_NONE, MAX_PRESSED_KEYS);
 
-    for (size_t code_hi = 0; code_hi < 8; ++code_hi) {
+    for (uint64_t code_hi = 0; code_hi < 8; ++code_hi) {
         uint32_t keys = atomic_swap_uint32(&kb->keys_pressed[code_hi], 0)
                       | atomic_load_uint32(&kb->keys_pressed_now[code_hi]);
         if (keys) {

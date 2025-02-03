@@ -88,13 +88,13 @@ static void gui_window_reset(rvvm_mmio_dev_t* dev)
     // Never ask why or how this works :D
     gui_window_t* win = dev->data;
     fb_ctx_t* fb = &win->fb;
-    size_t bytes = rgb_format_bytes(fb->format);
-    size_t stride = framebuffer_stride(fb);
+    uint64_t bytes = rgb_format_bytes(fb->format);
+    uint64_t stride = framebuffer_stride(fb);
     uint32_t pos_x = fb->width / 2 - 152;
     uint32_t pos_y = fb->height / 2 - 80;
 
     for (uint32_t y=0; y<fb->height; ++y) {
-        size_t tmp_stride = stride * y;
+        uint64_t tmp_stride = stride * y;
         for (uint32_t x=0; x<fb->width; ++x) {
             uint8_t pix = 0;
             if (x >= pos_x && x - pos_x < 304 && y >= pos_y && y - pos_y < 160) {

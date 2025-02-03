@@ -32,7 +32,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #define RISCV_MMU_DEBUG_ACCESS (RISCV_MMU_READ | RISCV_MMU_EXEC | RISCV_MMU_WRITE)
 
-bool riscv_init_ram(rvvm_ram_t* mem, rvvm_addr_t base_addr, size_t size)
+bool riscv_init_ram(rvvm_ram_t* mem, rvvm_addr_t base_addr, uint64_t size)
 {
     // Memory boundaries should be always aligned to page size
     if ((base_addr & RISCV_PAGE_MASK) || (size & RISCV_PAGE_MASK)) {
@@ -142,7 +142,7 @@ static void riscv_tlb_put(rvvm_hart_t* vm, rvvm_addr_t vaddr, void* ptr, uint8_t
             break;
     }
 
-    entry->ptr = ((size_t)ptr) - vaddr;
+    entry->ptr = ((uint64_t)ptr) - vaddr;
 }
 
 static forceinline void* riscv_phys_access(rvvm_hart_t* vm, rvvm_addr_t paddr)
@@ -180,8 +180,8 @@ static inline bool riscv_mmu_translate_sv32(rvvm_hart_t* vm, rvvm_addr_t vaddr, 
     rvvm_addr_t pagetable = vm->root_page_table;
     bitcnt_t bit_off = SV32_VPN_BITS + RISCV_PAGE_SHIFT;
 
-    for (size_t i = 0; i < SV32_LEVELS; ++i) {
-        size_t pgt_off = ((vaddr >> bit_off) & SV32_VPN_MASK) << 2;
+    for (uint64_t i = 0; i < SV32_LEVELS; ++i) {
+        uint64_t pgt_off = ((vaddr >> bit_off) & SV32_VPN_MASK) << 2;
         void* pte_ptr = riscv_phys_access(vm, pagetable + pgt_off);
         if (unlikely(!pte_ptr)) {
             // Physical fault on pagetable walk
@@ -248,8 +248,8 @@ static inline bool riscv_mmu_translate_rv64(rvvm_hart_t* vm, rvvm_addr_t vaddr, 
         return false;
     }
 
-    for (size_t i = 0; i < sv_levels; ++i) {
-        size_t pgt_off = ((vaddr >> bit_off) & SV64_VPN_MASK) << 3;
+    for (uint64_t i = 0; i < sv_levels; ++i) {
+        uint64_t pgt_off = ((vaddr >> bit_off) & SV64_VPN_MASK) << 3;
         void* pte_ptr = riscv_phys_access(vm, pagetable + pgt_off);
         if (unlikely(!pte_ptr)) {
             // Physical fault on pagetable walk
@@ -348,10 +348,10 @@ static inline bool riscv_mmu_translate(rvvm_hart_t* vm, rvvm_addr_t vaddr, rvvm_
  * to prevent other harts from observing half-made memory operation on TLB miss
  */
 
-TSAN_SUPPRESS static forceinline void atomic_memcpy_relaxed(void* dst, const void* src, size_t size)
+TSAN_SUPPRESS static forceinline void atomic_memcpy_relaxed(void* dst, const void* src, uint64_t size)
 {
-    size_t srci = (size_t)src;
-    size_t dsti = (size_t)dst;
+    uint64_t srci = (uint64_t)src;
+    uint64_t dsti = (uint64_t)dst;
     if (likely(size == 8 && !(srci & 7) && !(dsti & 7))) {
         *(uint64_t*)dst = *(const uint64_t*)src;
     } else if (likely(size == 4 && !(srci & 3) && !(dsti & 3))) {
@@ -359,20 +359,20 @@ TSAN_SUPPRESS static forceinline void atomic_memcpy_relaxed(void* dst, const voi
     } else if (likely(size == 2 && !(srci & 1) && !(dsti & 1))) {
         *(uint16_t*)dst = *(const uint16_t*)src;
     } else {
-        for (size_t i = 0; i < size; ++i) {
+        for (uint64_t i = 0; i < size; ++i) {
             ((uint8_t*)dst)[i] = ((const uint8_t*)src)[i];
         }
     }
 }
 
-static bool riscv_mmio_unaligned_op(rvvm_mmio_dev_t* dev, void* dest, size_t offset, uint8_t size, uint8_t access)
+static bool riscv_mmio_unaligned_op(rvvm_mmio_dev_t* dev, void* dest, uint64_t offset, uint8_t size, uint8_t access)
 {
     uint8_t tmp[16] = {0};
-    size_t align = (size < dev->min_op_size) ? dev->min_op_size :
+    uint64_t align = (size < dev->min_op_size) ? dev->min_op_size :
                    ((size > dev->max_op_size) ? dev->max_op_size : size);
-    size_t offset_align = offset & ~(size_t)(align - 1);
-    size_t offset_diff = offset - offset_align;
-    size_t offset_dest = 0, size_dest = 0;
+    uint64_t offset_align = offset & ~(uint64_t)(align - 1);
+    uint64_t offset_diff = offset - offset_align;
+    uint64_t offset_dest = 0, size_dest = 0;
 
     if (align > sizeof(tmp)) {
         // This should not happen, but a sanity check is always nice
@@ -415,7 +415,7 @@ static bool riscv_mmio_scan(rvvm_hart_t* vm, rvvm_addr_t vaddr, rvvm_addr_t padd
         rvvm_mmio_handler_t rwfunc = NULL;
         if (paddr >= mmio->addr && (paddr + size) <= (mmio->addr + mmio->size)) {
             // Found the device, access lies in range
-            size_t offset = paddr - mmio->addr;
+            uint64_t offset = paddr - mmio->addr;
             if (access == RISCV_MMU_WRITE) {
                 rwfunc = mmio->write;
             } else {
@@ -452,7 +452,7 @@ static bool riscv_mmio_scan(rvvm_hart_t* vm, rvvm_addr_t vaddr, rvvm_addr_t padd
     return false;
 }
 
-static forceinline bool riscv_block_in_page(rvvm_addr_t addr, size_t size)
+static forceinline bool riscv_block_in_page(rvvm_addr_t addr, uint64_t size)
 {
     return (addr & RISCV_PAGE_MASK) + size <= RISCV_PAGE_SIZE;
 }
@@ -495,7 +495,7 @@ no_inline void* riscv_mmu_op_internal(rvvm_hart_t* vm, rvvm_addr_t vaddr, void* 
     rvvm_addr_t paddr = 0;
     uint8_t access = attr & 0xFF;
     uint8_t mmu_access = access;
-    size_t size = attr >> 16;
+    uint64_t size = attr >> 16;
 
     if (unlikely(!riscv_block_in_page(vaddr, size))) {
         if (attr & RISCV_MMU_ATTR_RMW) {

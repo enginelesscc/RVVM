@@ -268,7 +268,7 @@ uint32_t riscv_get_aia_irq(rvvm_hart_t* vm, bool smode, bool claim)
         rvvm_aia_regfile_t* aia = &vm->aia[smode];
         uint32_t eithreshold = atomic_load_uint32_relax(&aia->eithreshold);
         bool clear_eip = claim;
-        for (size_t i = 0; i < RVVM_AIA_ARR_LEN; ++i) {
+        for (uint64_t i = 0; i < RVVM_AIA_ARR_LEN; ++i) {
             uint32_t eip = atomic_load_uint32_relax(&aia->eip[i]) & atomic_load_uint32_relax(&aia->eie[i]);
             if (eip) {
                 if (ret) {

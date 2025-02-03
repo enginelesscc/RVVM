@@ -14,11 +14,11 @@ typedef struct rvvm_gpio_dev rvvm_gpio_dev_t;
 
 struct rvvm_gpio_dev {
     // IO Dev -> GPIO Dev calls
-    bool (*pins_out)(rvvm_gpio_dev_t* dev, size_t off, uint32_t pins);
+    bool (*pins_out)(rvvm_gpio_dev_t* dev, uint64_t off, uint32_t pins);
 
     // GPIO Dev -> IO Dev calls
-    bool     (*pins_in)(rvvm_gpio_dev_t* dev, size_t off, uint32_t pins);
-    uint32_t (*pins_read)(rvvm_gpio_dev_t* dev, size_t off);
+    bool     (*pins_in)(rvvm_gpio_dev_t* dev, uint64_t off, uint32_t pins);
+    uint32_t (*pins_read)(rvvm_gpio_dev_t* dev, uint64_t off);
 
     // Common RVVM API features
     void (*update)(rvvm_gpio_dev_t* dev);
@@ -28,19 +28,19 @@ struct rvvm_gpio_dev {
     void* io_dev;
 };
 
-static inline bool gpio_pins_out(rvvm_gpio_dev_t* dev, size_t off, uint32_t pins)
+static inline bool gpio_pins_out(rvvm_gpio_dev_t* dev, uint64_t off, uint32_t pins)
 {
     if (dev && dev->pins_out) return dev->pins_out(dev, off, pins);
     return false;
 }
 
-static inline bool gpio_write_pins(rvvm_gpio_dev_t* dev, size_t off, uint32_t pins)
+static inline bool gpio_write_pins(rvvm_gpio_dev_t* dev, uint64_t off, uint32_t pins)
 {
     if (dev && dev->pins_in) return dev->pins_in(dev, off, pins);
     return false;
 }
 
-static inline uint32_t gpio_read_pins(rvvm_gpio_dev_t* dev, size_t off)
+static inline uint32_t gpio_read_pins(rvvm_gpio_dev_t* dev, uint64_t off)
 {
     if (dev && dev->pins_read) return dev->pins_read(dev, off);
     return 0;

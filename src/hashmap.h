@@ -24,8 +24,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // ((map->size >> 1) & 255)
 
 typedef struct {
-    size_t key;
-    size_t val;
+    uint64_t key;
+    uint64_t val;
 } hashmap_bucket_t;
 
 /*
@@ -35,29 +35,29 @@ typedef struct {
 */
 typedef struct {
     hashmap_bucket_t* buckets;
-    size_t size;
-    size_t entries;
-    size_t entry_balance;
+    uint64_t size;
+    uint64_t entries;
+    uint64_t entry_balance;
 } hashmap_t;
 
 // Hint the expected amount of entries on map creation
-void hashmap_init(hashmap_t* map, size_t size);
+void hashmap_init(hashmap_t* map, uint64_t size);
 
 void hashmap_destroy(hashmap_t* map);
-void hashmap_resize(hashmap_t* map, size_t size);
-void hashmap_grow(hashmap_t* map, size_t key, size_t val);
+void hashmap_resize(hashmap_t* map, uint64_t size);
+void hashmap_grow(hashmap_t* map, uint64_t key, uint64_t val);
 void hashmap_shrink(hashmap_t* map);
 void hashmap_clear(hashmap_t* map);
 
-static inline size_t hashmap_used_mem(hashmap_t* map)
+static inline uint64_t hashmap_used_mem(hashmap_t* map)
 {
     return (map->size + 1) * sizeof(hashmap_bucket_t);
 }
 
 #define hashmap_foreach(map, k, v) \
-    for (size_t _i=0, k, v; k=(map)->buckets[_i & (map)->size].key, v=(map)->buckets[_i & (map)->size].val, _i<=(map)->size; ++_i) if (v)
+    for (uint64_t _i=0, k, v; k=(map)->buckets[_i & (map)->size].key, v=(map)->buckets[_i & (map)->size].val, _i<=(map)->size; ++_i) if (v)
 
-static inline size_t hashmap_hash(size_t k)
+static inline uint64_t hashmap_hash(uint64_t k)
 {
     k ^= k << 21;
     k ^= k >> 17;
@@ -68,13 +68,13 @@ static inline size_t hashmap_hash(size_t k)
     return k;
 }
 
-void hashmap_rebalance(hashmap_t* map, size_t index);
+void hashmap_rebalance(hashmap_t* map, uint64_t index);
 
-static inline void hashmap_put(hashmap_t* map, size_t key, size_t val)
+static inline void hashmap_put(hashmap_t* map, uint64_t key, uint64_t val)
 {
-    size_t hash = hashmap_hash(key);
-    size_t index;
-    for (size_t i=0; i<HASHMAP_MAX_PROBES; ++i) {
+    uint64_t hash = hashmap_hash(key);
+    uint64_t index;
+    for (uint64_t i=0; i<HASHMAP_MAX_PROBES; ++i) {
         index = (hash + i) & map->size;
 
         if (map->buckets[index].key == key) {
@@ -101,11 +101,11 @@ static inline void hashmap_put(hashmap_t* map, size_t key, size_t val)
     if (val) hashmap_grow(map, key, val);
 }
 
-static inline size_t hashmap_get(const hashmap_t* map, size_t key)
+static inline uint64_t hashmap_get(const hashmap_t* map, uint64_t key)
 {
-    size_t hash = hashmap_hash(key);
-    size_t index;
-    for (size_t i=0; i<HASHMAP_MAX_PROBES; ++i) {
+    uint64_t hash = hashmap_hash(key);
+    uint64_t index;
+    for (uint64_t i=0; i<HASHMAP_MAX_PROBES; ++i) {
         index = (hash + i) & map->size;
         if (map->buckets[index].key == key || !map->buckets[index].val) {
             return map->buckets[index].val;
@@ -114,7 +114,7 @@ static inline size_t hashmap_get(const hashmap_t* map, size_t key)
     return 0;
 }
 
-static inline void hashmap_remove(hashmap_t* map, size_t key)
+static inline void hashmap_remove(hashmap_t* map, uint64_t key)
 {
     // Treat value zero as removed key
     hashmap_put(map, key, 0);

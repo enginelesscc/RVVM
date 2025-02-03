@@ -167,7 +167,7 @@ rvfile_t* rvopen(const char* filepath, uint8_t filemode)
         }
     }
 
-    size_t path_len = rvvm_strlen(filepath);
+    uint64_t path_len = rvvm_strlen(filepath);
     wchar_t* u16_path = safe_new_arr(wchar_t, path_len + 1);
     MultiByteToWideChar(CP_UTF8, 0, filepath, -1, u16_path, path_len + 1);
     HANDLE handle = CreateFileW(u16_path, access, share, NULL, disp, attr, NULL);
@@ -203,7 +203,7 @@ rvfile_t* rvopen(const char* filepath, uint8_t filemode)
         wchar_t wpath[256] = {0};
         GetModuleFileNameW(NULL, wpath, STATIC_ARRAY_SIZE(wpath));
         WideCharToMultiByte(CP_UTF8, 0, wpath, -1, path, sizeof(path), NULL, NULL);
-        size_t len = rvvm_strlen(path);
+        uint64_t len = rvvm_strlen(path);
         while (len && path[len - 1] != '\\') {
             len--;
         }
@@ -278,7 +278,7 @@ uint64_t rvfilesize(rvfile_t* file)
 }
 
 // Return value of -1 means "Try again"
-static int32_t rvread_chunk(rvfile_t* file, void* dst, size_t size, uint64_t offset)
+static int32_t rvread_chunk(rvfile_t* file, void* dst, uint64_t size, uint64_t offset)
 {
 #if defined(POSIX_FILE_IMPL)
     int32_t ret = pread(file->fd, dst, size, offset);
@@ -300,15 +300,15 @@ static int32_t rvread_chunk(rvfile_t* file, void* dst, size_t size, uint64_t off
     return ret;
 }
 
-size_t rvread(rvfile_t* file, void* dst, size_t size, uint64_t offset)
+uint64_t rvread(rvfile_t* file, void* dst, uint64_t size, uint64_t offset)
 {
     if (!file || size == 0) return 0;
     uint64_t pos = (offset == RVFILE_CUR) ? rvtell(file) : offset;
     uint8_t* buffer = dst;
-    size_t ret = 0;
+    uint64_t ret = 0;
 
     while (ret < size) {
-        size_t chunk_size = EVAL_MIN(size - ret, RVFILE_MAX_BUFF);
+        uint64_t chunk_size = EVAL_MIN(size - ret, RVFILE_MAX_BUFF);
         int32_t tmp = rvread_chunk(file, buffer + ret, chunk_size, pos + ret);
         if (tmp > 0) {
             ret += tmp;
@@ -323,7 +323,7 @@ size_t rvread(rvfile_t* file, void* dst, size_t size, uint64_t offset)
 }
 
 // Return value of -1 means "Try again"
-int32_t rvwrite_chunk(rvfile_t* file, const void* src, size_t size, uint64_t offset)
+int32_t rvwrite_chunk(rvfile_t* file, const void* src, uint64_t size, uint64_t offset)
 {
 #if defined(POSIX_FILE_IMPL)
     int32_t ret = pwrite(file->fd, src, size, offset);
@@ -345,15 +345,15 @@ int32_t rvwrite_chunk(rvfile_t* file, const void* src, size_t size, uint64_t off
     return ret;
 }
 
-size_t rvwrite(rvfile_t* file, const void* src, size_t size, uint64_t offset)
+uint64_t rvwrite(rvfile_t* file, const void* src, uint64_t size, uint64_t offset)
 {
     if (!file || size == 0) return 0;
     uint64_t pos = (offset == RVFILE_CUR) ? rvtell(file) : offset;
     const uint8_t* buffer = src;
-    size_t ret = 0;
+    uint64_t ret = 0;
 
     while (ret < size) {
-        size_t chunk_size = EVAL_MIN(size - ret, RVFILE_MAX_BUFF);
+        uint64_t chunk_size = EVAL_MIN(size - ret, RVFILE_MAX_BUFF);
         int32_t tmp = rvwrite_chunk(file, buffer + ret, chunk_size, pos + ret);
         if (tmp > 0) {
             ret += tmp;
@@ -535,13 +535,13 @@ static void blk_raw_close(void* dev)
     rvclose(file);
 }
 
-static size_t blk_raw_read(void* dev, void* dst, size_t size, uint64_t offset)
+static uint64_t blk_raw_read(void* dev, void* dst, uint64_t size, uint64_t offset)
 {
     rvfile_t* file = dev;
     return rvread(file, dst, size, offset);
 }
 
-static size_t blk_raw_write(void* dev, const void* src, size_t size, uint64_t offset)
+static uint64_t blk_raw_write(void* dev, const void* src, uint64_t size, uint64_t offset)
 {
     rvfile_t* file = dev;
     return rvwrite(file, src, size, offset);

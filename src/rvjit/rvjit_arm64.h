@@ -198,7 +198,7 @@ static inline bool check_imm_bits(int32_t val, bitcnt_t bits)
     return sign_extend(val, bits) == val;
 }
 
-static inline size_t rvjit_native_default_hregmask(void)
+static inline uint64_t rvjit_native_default_hregmask(void)
 {
     // X0 - X15 registers are caller-saved
     // X0 is preserver as vmptr
@@ -206,7 +206,7 @@ static inline size_t rvjit_native_default_hregmask(void)
     return 0xFFFE;
 }
 
-static inline size_t rvjit_native_abireclaim_hregmask(void)
+static inline uint64_t rvjit_native_abireclaim_hregmask(void)
 {
     // We have enough caller-saved registers, no need for push/pop as well
     return 0;
@@ -1300,7 +1300,7 @@ static inline void rvjit_patchable_ret(rvjit_block_t* block)
 // Used to check interrupts in block linkage
 static inline void rvjit_tail_bnez(rvjit_block_t* block, regid_t addr, int32_t offset)
 {
-    size_t offset_fixup = block->size;
+    uint64_t offset_fixup = block->size;
     int32_t off;
     regid_t tmp = rvjit_claim_hreg(block);
     rvjit32_native_lw(block, tmp, addr, 0);

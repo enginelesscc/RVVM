@@ -173,11 +173,11 @@ static void* rcu_torture_read_worker(void* arg)
     bool running = true;
     rcu_register_thread();
     while (running) {
-        for (size_t iter = 0; iter < 4096; ++iter) {
+        for (uint64_t iter = 0; iter < 4096; ++iter) {
             rcu_read_lock();
             uint8_t* ptr = rcu_dereference(rcu_torture_ptr);
             if (ptr) {
-                for (size_t i = 0; i < RCU_TORTURE_OBJSIZE; ++i) {
+                for (uint64_t i = 0; i < RCU_TORTURE_OBJSIZE; ++i) {
                     if (ptr[i] != i + 1) {
                         rvvm_fatal("RCU torture test detected a datarace!!!");
                     }
@@ -197,7 +197,7 @@ static void* rcu_torture_read_worker(void* arg)
 static uint8_t* rcu_torture_new_ptr(void)
 {
     uint8_t* ptr = safe_new_arr(uint8_t, RCU_TORTURE_OBJSIZE);
-    for (size_t i = 0; i < RCU_TORTURE_OBJSIZE; ++i) {
+    for (uint64_t i = 0; i < RCU_TORTURE_OBJSIZE; ++i) {
         ptr[i] = i + 1;
     }
     return ptr;
@@ -210,7 +210,7 @@ static void* rcu_torture_write_worker(void* arg)
 
         rcu_synchronize();
 
-        for (size_t i = 0; i < RCU_TORTURE_OBJSIZE; ++i) {
+        for (uint64_t i = 0; i < RCU_TORTURE_OBJSIZE; ++i) {
             old_ptr[i] = 0;
         }
 

@@ -14,16 +14,16 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include <string.h>
 #include "utils.h"
 
-#define vector_t(vec_elem_type) struct { vec_elem_type* data; size_t size; size_t count; }
+#define vector_t(vec_elem_type) struct { vec_elem_type* data; uint64_t size; uint64_t count; }
 
 // Grow the internal vector buffer to fit element at pos, does not initialize memory
-slow_path void vector_grow_internal(void* vec, size_t elem_size, size_t pos);
+slow_path void vector_grow_internal(void* vec, uint64_t elem_size, uint64_t pos);
 
 // Emplace new element at pos, zeroing the new element and every preceeding one
-void vector_emplace_internal(void* vec, size_t elem_size, size_t pos);
+void vector_emplace_internal(void* vec, uint64_t elem_size, uint64_t pos);
 
 // Erase element at pos, moving the trailing elements into it's place
-void vector_erase_internal(void* vec, size_t elem_size, size_t pos);
+void vector_erase_internal(void* vec, uint64_t elem_size, uint64_t pos);
 
 // Initialize vector by zeroing it's fields
 #define vector_init(vec) \
@@ -111,10 +111,10 @@ do { \
 // Iterates the vector in forward order
 // Be sure to break loop after vector_erase(), since it invalidates forward iterators
 #define vector_foreach(vec, iter) \
-    for (size_t iter=0; iter<(vec).count; ++iter)
+    for (uint64_t iter=0; iter<(vec).count; ++iter)
 
 // Iterates the vector in reversed order, which is safe for vector_erase()
 #define vector_foreach_back(vec, iter) \
-    for (size_t iter=(vec).count; iter--;)
+    for (uint64_t iter=(vec).count; iter--;)
 
 #endif

@@ -471,7 +471,7 @@ static void x11_window_poll(gui_window_t* win)
 {
     x11_data_t* x11 = win->win_data;
     Display* dsp = x11->display;
-    size_t pending = 0;
+    uint64_t pending = 0;
 
     XSync(dsp, False);
     while ((pending = XPending(dsp))) {

@@ -109,9 +109,9 @@ typedef struct {
     rvvm_addr_t prp1;
     rvvm_addr_t prp2;
     uint8_t*    prp2_dma;
-    size_t      prp2_off;
-    size_t      size;
-    size_t      cur;
+    uint64_t      prp2_off;
+    uint64_t      size;
+    uint64_t      cur;
 } nvme_prp_ctx_t;
 
 typedef struct {
@@ -173,11 +173,11 @@ static void nvme_complete_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd, uint32_t sf)
     if (!(nvme->irq_mask & 1)) pci_send_irq(nvme->pci_func, 0);
 }
 
-static size_t nvme_process_prp_chunk(nvme_dev_t* nvme, nvme_cmd_t* cmd)
+static uint64_t nvme_process_prp_chunk(nvme_dev_t* nvme, nvme_cmd_t* cmd)
 {
     nvme_prp_ctx_t* prp = &cmd->prp;
     rvvm_addr_t addr = prp->prp1;
-    size_t len = NVME_PAGE_SIZE;
+    uint64_t len = NVME_PAGE_SIZE;
 
     if (prp->cur >= prp->size) {
         // End of transfer
@@ -234,7 +234,7 @@ static size_t nvme_process_prp_chunk(nvme_dev_t* nvme, nvme_cmd_t* cmd)
     return len;
 }
 
-static void* nvme_get_prp_chunk(nvme_dev_t* nvme, nvme_cmd_t* cmd, size_t* size)
+static void* nvme_get_prp_chunk(nvme_dev_t* nvme, nvme_cmd_t* cmd, uint64_t* size)
 {
     rvvm_addr_t addr = cmd->prp.prp1;
     *size = nvme_process_prp_chunk(nvme, cmd);
@@ -244,11 +244,11 @@ static void* nvme_get_prp_chunk(nvme_dev_t* nvme, nvme_cmd_t* cmd, size_t* size)
     return ret;
 }
 
-static bool nvme_write_prp(nvme_dev_t* nvme, nvme_cmd_t* cmd, const void* data, size_t size)
+static bool nvme_write_prp(nvme_dev_t* nvme, nvme_cmd_t* cmd, const void* data, uint64_t size)
 {
     const uint8_t* src = data;
     uint8_t* dest;
-    size_t tmp_size;
+    uint64_t tmp_size;
     cmd->prp.size = size;
     while (cmd->prp.cur < cmd->prp.size) {
         dest = nvme_get_prp_chunk(nvme, cmd, &tmp_size);
@@ -287,7 +287,7 @@ static void nvme_admin_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd)
                     ptr[516] = 1;    // Number of Namespaces
                     ptr[520] = 0xC;  // Supports Write Zeroes, Dataset Management
                     // NVMe Qualified Name (Includes serial to distinguish targets)
-                    size_t nqn_off = rvvm_strlcpy((char*)ptr + 768, "nqn.2022-04.lekkit:nvme:", 256);
+                    uint64_t nqn_off = rvvm_strlcpy((char*)ptr + 768, "nqn.2022-04.lekkit:nvme:", 256);
                     memcpy(ptr + 768 + nqn_off,  nvme->serial, sizeof(nvme->serial));
                     break;
                 }
@@ -311,7 +311,7 @@ static void nvme_admin_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd)
         }
         case A_MKIO_SUB:
         case A_MKIO_COM: {
-            size_t q_id = (read_uint16_le(cmd->ptr + 40) << 1) + (cmd->opcode == A_MKIO_COM);
+            uint64_t q_id = (read_uint16_le(cmd->ptr + 40) << 1) + (cmd->opcode == A_MKIO_COM);
             uint16_t q_size = read_uint16_le(cmd->ptr + 42);
             if (q_id <= ADMIN_COMQ || q_id >= NVME_MAXQ) {
                 nvme_complete_cmd(nvme, cmd, SC_BAD_QI);
@@ -330,7 +330,7 @@ static void nvme_admin_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd)
         }
         case A_RMIO_SUB:
         case A_RMIO_COM: {
-            size_t q_id = (read_uint16_le(cmd->ptr + 40) << 1) + (cmd->opcode == A_RMIO_COM);
+            uint64_t q_id = (read_uint16_le(cmd->ptr + 40) << 1) + (cmd->opcode == A_RMIO_COM);
             if (q_id <= ADMIN_COMQ || q_id >= NVME_MAXQ) {
                 nvme_complete_cmd(nvme, cmd, SC_BAD_QI);
             } else {
@@ -366,7 +366,7 @@ static void nvme_io_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd)
 {
     uint64_t pos = read_uint64_le(cmd->ptr + 40) << NVME_LBAS;
     uint8_t* buffer;
-    size_t   size, tmp;
+    uint64_t   size, tmp;
 
     switch (cmd->opcode) {
         case NVM_READ:
@@ -398,11 +398,11 @@ static void nvme_io_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd)
         case NVM_DTSM:
             if (cmd->ptr[44] & 0x4) {
                 // Deallocate (TRIM)
-                cmd->prp.size = (((size_t)cmd->ptr[40]) + 1) << 4;
+                cmd->prp.size = (((uint64_t)cmd->ptr[40]) + 1) << 4;
                 while (cmd->prp.cur < cmd->prp.size) {
                     buffer = nvme_get_prp_chunk(nvme, cmd, &size);
                     if (!buffer) return;
-                    for (size_t i=0; i<size; i += 16) {
+                    for (uint64_t i=0; i<size; i += 16) {
                         uint64_t trim_len = ((uint64_t)read_uint32_le(buffer + i + 4)) << NVME_LBAS;
                         uint64_t trim_pos = read_uint64_le(buffer + i + 8) << NVME_LBAS;
                         blk_trim(nvme->blk, trim_pos, trim_len);
@@ -421,12 +421,12 @@ static void nvme_io_cmd(nvme_dev_t* nvme, nvme_cmd_t* cmd)
 static void* nvme_cmd_worker(void** data)
 {
     nvme_dev_t* nvme = data[0];
-    size_t queue_id = (size_t)data[1];
+    uint64_t queue_id = (uint64_t)data[1];
     nvme_queue_t* queue = &nvme->queues[queue_id];
     nvme_cmd_t cmd = {
         .queue = &nvme->queues[queue_id + 1],
         .sq_id = queue_id >> 1,
-        .sq_head = (size_t)data[2],
+        .sq_head = (uint64_t)data[2],
     };
     cmd.ptr = pci_get_dma_ptr(nvme->pci_func, queue->addr + (cmd.sq_head << 6), 64);
     if (cmd.ptr) {
@@ -435,7 +435,7 @@ static void* nvme_cmd_worker(void** data)
         cmd.cmd_id = read_uint16_le(cmd.ptr + 2);
         cmd.prp.prp1 = read_uint64_le(cmd.ptr + 24);
         cmd.prp.prp2 = read_uint64_le(cmd.ptr + 32);
-        cmd.prp.size = (((size_t)read_uint16_le(cmd.ptr + 48)) + 1) << NVME_LBAS;
+        cmd.prp.size = (((uint64_t)read_uint16_le(cmd.ptr + 48)) + 1) << NVME_LBAS;
 
         if (queue_id == ADMIN_SUBQ) {
             nvme_admin_cmd(nvme, &cmd);
@@ -447,7 +447,7 @@ static void* nvme_cmd_worker(void** data)
     return NULL;
 }
 
-static void nvme_doorbell(nvme_dev_t* nvme, size_t queue_id, uint16_t val)
+static void nvme_doorbell(nvme_dev_t* nvme, uint64_t queue_id, uint16_t val)
 {
     nvme_queue_t* queue = &nvme->queues[queue_id];
 
@@ -461,7 +461,7 @@ static void nvme_doorbell(nvme_dev_t* nvme, size_t queue_id, uint16_t val)
     } else {
         queue->tail = val;
         while (queue->head != queue->tail) {
-            void* args[3] = {nvme, (void*)queue_id, (void*)(size_t)queue->head};
+            void* args[3] = {nvme, (void*)queue_id, (void*)(uint64_t)queue->head};
             atomic_add_uint32(&nvme->threads, 1);
             thread_create_task_va(nvme_cmd_worker, args, 3);
 
@@ -471,7 +471,7 @@ static void nvme_doorbell(nvme_dev_t* nvme, size_t queue_id, uint16_t val)
     spin_unlock(&queue->lock);
 }
 
-static bool nvme_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool nvme_pci_read(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     nvme_dev_t* nvme = dev->data;
     spin_lock(&nvme->lock);
@@ -520,13 +520,13 @@ static bool nvme_pci_read(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8
     return true;
 }
 
-static bool nvme_pci_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool nvme_pci_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     nvme_dev_t* nvme = dev->data;
     UNUSED(size);
     if (likely(offset >= 0x1000)) {
         // Doorbell
-        size_t queue_id = (offset - 0x1000) >> (NVME_DSTRD + 2);
+        uint64_t queue_id = (offset - 0x1000) >> (NVME_DSTRD + 2);
         if (queue_id < NVME_MAXQ) nvme_doorbell(nvme, queue_id, read_uint16_le(data));
         return true;
     }

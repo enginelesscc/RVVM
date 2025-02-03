@@ -47,7 +47,7 @@ struct hid_keyboard {
 
     // Last key pressed, used for typematic input
     const uint8_t* lastkey;
-    size_t lastkey_size;
+    uint64_t lastkey_size;
 
     // Used in IRQ handling for typematic (repeated) input
     rvtimer_t sample_timer;
@@ -217,20 +217,20 @@ static bool ps2_keyboard_cmd(hid_keyboard_t* kb, uint8_t cmd)
     }
 }
 
-static size_t ps2_keyboard_read(chardev_t* dev, void* buf, size_t size)
+static uint64_t ps2_keyboard_read(chardev_t* dev, void* buf, uint64_t size)
 {
     hid_keyboard_t* kb = dev->data;
     spin_lock(&kb->lock);
-    size_t ret = ringbuf_read(&kb->cmdbuf, buf, size);
+    uint64_t ret = ringbuf_read(&kb->cmdbuf, buf, size);
     spin_unlock(&kb->lock);
     return ret;
 }
 
-static size_t ps2_keyboard_write(chardev_t* dev, const void* buf, size_t size)
+static uint64_t ps2_keyboard_write(chardev_t* dev, const void* buf, uint64_t size)
 {
     hid_keyboard_t* kb = dev->data;
     spin_lock(&kb->lock);
-    for (size_t i=0; i<size; ++i) {
+    for (uint64_t i=0; i<size; ++i) {
         uint8_t val = ((const uint8_t*)buf)[i];
 
         switch (kb->state) {
@@ -339,7 +339,7 @@ PUBLIC hid_keyboard_t* hid_keyboard_init_auto_ps2(rvvm_machine_t* machine)
     return kb;
 }
 
-static const uint8_t* hid_to_ps2_keycode(hid_key_t key, size_t* size)
+static const uint8_t* hid_to_ps2_keycode(hid_key_t key, uint64_t* size)
 {
     if (key < sizeof(hid_to_ps2_byte_map) && hid_to_ps2_byte_map[key]) {
         // Convert small & common keycodes using a table, fallback to switch
@@ -416,7 +416,7 @@ static void ps2_handle_keyboard(hid_keyboard_t* kb, hid_key_t key, bool pressed)
     // Ignore repeated press/release events
     bool key_state = !!(kb->key_state[key >> 3] & (1 << (key & 0x7)));
     if (key != HID_KEY_NONE && key_state != pressed && kb->reporting) {
-        size_t keycode_size = 0;
+        uint64_t keycode_size = 0;
         const uint8_t* keycode = hid_to_ps2_keycode(key, &keycode_size);
 
         if (keycode) {

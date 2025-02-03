@@ -19,10 +19,10 @@ typedef struct {
     bool smode;
 } imsic_ctx_t;
 
-static bool imsic_mmio_write(rvvm_mmio_dev_t* dev, void* data, size_t offset, uint8_t size)
+static bool imsic_mmio_write(rvvm_mmio_dev_t* dev, void* data, uint64_t offset, uint8_t size)
 {
     imsic_ctx_t* imsic = dev->data;
-    size_t hartid = offset >> 12;
+    uint64_t hartid = offset >> 12;
     UNUSED(size);
 
     if (hartid < vector_size(dev->machine->harts)) {
@@ -112,7 +112,7 @@ PUBLIC void riscv_imsic_init(rvvm_machine_t* machine, rvvm_addr_t addr, bool smo
 
 PUBLIC void riscv_imsic_init_auto(rvvm_machine_t* machine)
 {
-    size_t imsic_size = vector_size(machine->harts) << 12;
+    uint64_t imsic_size = vector_size(machine->harts) << 12;
     rvvm_addr_t m_addr = rvvm_mmio_zone_auto(machine, IMSIC_M_ADDR_DEFAULT, imsic_size);
     rvvm_addr_t s_addr = rvvm_mmio_zone_auto(machine, IMSIC_S_ADDR_DEFAULT, imsic_size);
     riscv_imsic_init(machine, m_addr, false);
