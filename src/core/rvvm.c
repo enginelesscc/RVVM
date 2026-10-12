@@ -705,7 +705,25 @@ PUBLIC bool rvvm_set_opt(rvvm_machine_t* machine, uint32_t opt, rvvm_addr_t val)
         }
         switch (opt) {
             case RVVM_OPT_MEM_BASE:
+                /* RAM relocation is only safe before the machine is started. */
+                if (rvvm_machine_powered(machine) || (val & 0xFFF)) {
+                    return false;
+                }
+#if defined(USE_FDT)
+                if (machine->fdt) {
+                    rvvm_fdt_free(rvvm_fdt_find_reg(machine->fdt, "memory", machine->mem.addr));
+                    rvvm_fdt_node_t* memory = rvvm_fdt_init_reg("memory", val);
+                    rvvm_fdt_prop_set_str(memory, "device_type", "memory");
+                    rvvm_fdt_prop_set_reg(memory, "reg", val, machine->mem.size);
+                    rvvm_fdt_attach(machine->fdt, memory);
+                }
+#endif
                 machine->mem.addr = val;
+                vector_foreach (machine->harts, i) {
+                    rvvm_hart_t* hart = vector_at(machine->harts, i);
+                    hart->mem         = machine->mem;
+                    riscv_tlb_flush(hart);
+                }
                 return true;
         }
     }

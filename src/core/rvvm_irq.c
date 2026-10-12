@@ -21,7 +21,7 @@ struct rvvm_irq_dev {
 
     const rvvm_irq_dev_cb_t* cb;
 
-    uint32_t irqs[4];
+    uint32_t irqs[5];
     uint32_t irq_base;
     uint32_t phandle;
 };
@@ -76,12 +76,13 @@ RVVM_PUBLIC rvvm_irq_t rvvm_irq_alloc(rvvm_irq_dev_t* irq_dev, rvvm_irq_t irq)
                 if (curr >= irq) {
                     uint32_t mask = bit_set32(nbit);
                     uint32_t swap = atomic_or_uint32(&irq_dev->irqs[cell], mask);
-                    bits          = swap & ~mask;
+                    bits          = swap | mask;
                     if (!(swap & mask)) {
                         return curr;
                     }
                 } else {
-                    break;
+                    // Skip only this candidate; the requested IRQ may be in this cell.
+                    bits |= bit_set32(nbit);
                 }
             }
         }
