@@ -43,6 +43,7 @@ typedef struct {
 
     // Input grab flag
     bool grab;
+    bool absolute;
 } win32_window_t;
 
 static ATOM win32_atom = 0;
@@ -161,8 +162,21 @@ static const hid_key_t win32_key_to_hid_byte_map[] = {
     [0x5C] = HID_KEY_RIGHTMETA,
 };
 
-static hid_key_t win32_key_to_hid(uint32_t win32_key)
+static hid_key_t win32_key_to_hid(uint32_t win32_key, LPARAM info)
 {
+    bool extended = !!(info & (1UL << 24));
+    if (win32_key == VK_CONTROL) {
+        return extended ? HID_KEY_RIGHTCTRL : HID_KEY_LEFTCTRL;
+    }
+    if (win32_key == VK_MENU) {
+        return extended ? HID_KEY_RIGHTALT : HID_KEY_LEFTALT;
+    }
+    if (win32_key == VK_SHIFT) {
+        return ((info >> 16) & 255) == 0x36 ? HID_KEY_RIGHTSHIFT : HID_KEY_LEFTSHIFT;
+    }
+    if (win32_key == VK_RETURN && extended) {
+        return HID_KEY_KPENTER;
+    }
     if (win32_key < sizeof(win32_key_to_hid_byte_map)) {
         return win32_key_to_hid_byte_map[win32_key];
     }
@@ -183,7 +197,9 @@ static LRESULT CALLBACK win32_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
     }
 
     if (uMsg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT) {
-        SetCursor(NULL);
+        win32_window_t* state = (win32_window_t*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        SetCursor(state && state->grab ? NULL : LoadCursor(NULL, IDC_ARROW));
+        return TRUE;
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
@@ -193,13 +209,8 @@ static void win32_clip_cursor(win32_window_t* win32, bool clip)
 {
     if (clip) {
         RECT rect = ZERO_INIT;
-        RECT adj  = ZERO_INIT;
-        GetWindowRect(win32->hwnd, &rect);
-        AdjustWindowRectEx(&adj, WINDOW_STYLE_FLAGS, false, 0);
-        rect.top    -= (adj.top - 10);
-        rect.left   -= (adj.left - 10);
-        rect.right  -= (adj.right + 10);
-        rect.bottom -= (adj.bottom + 10);
+        GetClientRect(win32->hwnd, &rect);
+        MapWindowPoints(win32->hwnd, NULL, (POINT*)&rect, 2);
         ClipCursor(&rect);
     } else {
         ClipCursor(NULL);
@@ -212,6 +223,9 @@ static void win32_window_free(gui_window_t* win)
     gui_backend_set_data(win, NULL);
     if (win32) {
         win32_clip_cursor(win32, false);
+        if (GetCapture() == win32->hwnd) {
+            ReleaseCapture();
+        }
         vma_free(gui_backend_get_vram(win), gui_backend_get_vram_size(win));
         if (win32->hdc) {
             ReleaseDC(win32->hwnd, win32->hdc);
@@ -223,19 +237,32 @@ static void win32_window_free(gui_window_t* win)
     }
 }
 
+static bool win32_absolute_input(void)
+{
+    return GetSystemMetrics(SM_REMOTESESSION) != 0 || rvvm_has_arg("absolute-mouse");
+}
+
 static void win32_window_poll(gui_window_t* win)
 {
     win32_window_t* win32 = gui_backend_get_data(win);
+
+    bool absolute = win32_absolute_input();
+    if (win32->absolute != absolute) {
+        // RDP reconnect/session migration: release keys and stop cursor warping.
+        gui_backend_on_focus_lost(win);
+        win32->absolute = absolute;
+        rvvm_info("Window mouse mode: %s", absolute ? "absolute (RDP/tablet)" : "relative capture");
+    }
 
     MSG Msg = ZERO_INIT;
     while (PeekMessage(&Msg, win32->hwnd, 0, 0, PM_REMOVE)) {
         switch (Msg.message) {
             case WM_MOUSEMOVE:
-                if (win32->grab) {
+                if (win32->grab && !win32->absolute) {
                     POINTS cur = MAKEPOINTS(Msg.lParam);
                     POINT  mid = {
-                         .x = gui_window_width(win) >> 1,
-                         .y = gui_window_height(win) >> 1,
+                        .x = gui_window_width(win) >> 1,
+                        .y = gui_window_height(win) >> 1,
                     };
                     int dx = cur.x - mid.x;
                     int dy = cur.y - mid.y;
@@ -252,15 +279,13 @@ static void win32_window_poll(gui_window_t* win)
             case WM_KEYDOWN:
             case WM_SYSKEYDOWN: // For handling F10
                 // Disable autorepeat keypresses
-                if (!(Msg.lParam & KF_REPEAT)) {
-                    gui_backend_on_key_press(win, win32_key_to_hid(Msg.wParam));
+                if (!(Msg.lParam & (1UL << 30))) {
+                    gui_backend_on_key_press(win, win32_key_to_hid(Msg.wParam, Msg.lParam));
                 }
                 break;
             case WM_KEYUP:
             case WM_SYSKEYUP:
-                if (!(Msg.lParam & KF_REPEAT)) {
-                    gui_backend_on_key_release(win, win32_key_to_hid(Msg.wParam));
-                }
+                gui_backend_on_key_release(win, win32_key_to_hid(Msg.wParam, Msg.lParam));
                 break;
             case WM_LBUTTONDOWN:
                 gui_backend_on_mouse_press(win, HID_BTN_LEFT);
@@ -384,8 +409,20 @@ static void win32_window_grab_input(gui_window_t* win, bool grab)
 {
     win32_window_t* win32 = gui_backend_get_data(win);
     if (win32->grab != grab) {
-        win32_clip_cursor(win32, grab);
         win32->grab = grab;
+        SetWindowLongPtr(win32->hwnd, GWLP_USERDATA, (LONG_PTR)win32);
+        if (grab) {
+            SetCapture(win32->hwnd);
+            if (!win32->absolute) {
+                POINT mid = {.x = gui_window_width(win) / 2, .y = gui_window_height(win) / 2};
+                ClientToScreen(win32->hwnd, &mid);
+                SetCursorPos(mid.x, mid.y);
+            }
+        } else if (GetCapture() == win32->hwnd) {
+            ReleaseCapture();
+        }
+        win32_clip_cursor(win32, grab);
+        SetCursor(grab ? NULL : LoadCursor(NULL, IDC_ARROW));
     }
 }
 
@@ -426,6 +463,8 @@ bool win32_window_init(gui_window_t* win)
     // Register Win32 backend
     win32_window_t* win32 = safe_new_obj(win32_window_t);
 
+    win32->absolute = win32_absolute_input();
+    rvvm_info("Window mouse mode: %s", win32->absolute ? "absolute (RDP/tablet)" : "relative capture");
     gui_backend_register(win, &win32_window_cb);
     gui_backend_set_data(win, win32);
 

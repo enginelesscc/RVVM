@@ -12,6 +12,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "i2c-hid.h"
 #include "mem_ops.h"
 #include "spinlock.h"
+#include "usb-ohci.h"
 #include "utils.h"
 
 PUSH_OPTIMIZATION_SIZE
@@ -141,7 +142,7 @@ static void hid_keyboard_remove(void* dev)
     free(kb);
 }
 
-PUBLIC hid_keyboard_t* hid_keyboard_init_auto(rvvm_machine_t* machine)
+static hid_keyboard_t* hid_keyboard_init(rvvm_machine_t* machine, usb_ohci_t* usb)
 {
     hid_keyboard_t* kb = safe_new_obj(hid_keyboard_t);
 
@@ -160,7 +161,11 @@ PUBLIC hid_keyboard_t* hid_keyboard_init_auto(rvvm_machine_t* machine)
     kb->hid_dev.write_report = hid_keyboard_write_report;
     kb->hid_dev.remove       = hid_keyboard_remove;
 
-    i2c_hid_init_auto(machine, &kb->hid_dev);
+    if (usb) {
+        usb_ohci_attach_hid(usb, &kb->hid_dev, 1);
+    } else {
+        i2c_hid_init_auto(machine, &kb->hid_dev);
+    }
 
     return kb;
 }
@@ -197,3 +202,13 @@ PUBLIC void hid_keyboard_release(hid_keyboard_t* kb, hid_key_t key)
 }
 
 POP_OPTIMIZATION_SIZE
+
+hid_keyboard_t* hid_keyboard_init_usb(usb_ohci_t* hc)
+{
+    return hid_keyboard_init(NULL, hc);
+}
+
+PUBLIC hid_keyboard_t* hid_keyboard_init_auto(rvvm_machine_t* machine)
+{
+    return hid_keyboard_init(machine, NULL);
+}

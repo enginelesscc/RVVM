@@ -42,6 +42,16 @@ RVVM_PUBLIC bool rvvm_riscv_clint_init(rvvm_machine_t* machine, rvvm_addr_t addr
  */
 RVVM_PUBLIC rvvm_irq_dev_t* rvvm_riscv_plic_init(rvvm_machine_t* machine, rvvm_addr_t addr);
 
+/* Variant with 1 through 159 usable interrupt sources. */
+RVVM_PUBLIC rvvm_irq_dev_t* rvvm_riscv_plic_init_sized(rvvm_machine_t* machine, rvvm_addr_t addr, uint32_t sources);
+
+/* Experimental K1 core peripherals plus virtual expansion devices.
+ * highmem relocates RAM for firmware linked at 0x80000000 (not K1 DRAM layout). */
+RVVM_PUBLIC bool rvvm_board_spacemit_k1_init(rvvm_machine_t* machine, bool highmem);
+
+/* JH7110 core MMIO with virtual expansion devices; S7 management core omitted. */
+RVVM_PUBLIC bool rvvm_board_starfive_jh7110_init(rvvm_machine_t* machine, bool highmem);
+
 /**
  * Attach RISC-V Incoming Message-Signaled Interrupt Controller to the machine (FDT-based)
  *

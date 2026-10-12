@@ -30,13 +30,15 @@ PUSH_OPTIMIZATION_SIZE
 /*
  * PLIC Implementation constants
  */
-#define PLIC_SRC_LIMIT 64                           // Max interrupt identities
+#define PLIC_SRC_LIMIT 160                          // Max interrupt identities
 #define PLIC_SRC_REGS  ((PLIC_SRC_LIMIT + 31) >> 5) // Number of bitset regs
 
 typedef struct {
     rvvm_machine_t* machine;
     rvvm_irq_dev_t* irq_dev;
 
+    uint32_t   src_limit;
+    uint32_t   src_regs;
     uint32_t   prio[PLIC_SRC_LIMIT];
     uint32_t   pending[PLIC_SRC_REGS];
     uint32_t   raised[PLIC_SRC_REGS];
@@ -121,7 +123,7 @@ static uint32_t plic_update_ctx(plic_dev_t* plic, uint32_t ctx, bool claim)
 
     riscv_interrupt_clear(vector_at(plic->machine->harts, plic_ctx_hartid(ctx)), plic_ctx_prio(ctx));
 
-    for (size_t reg = 0; reg < PLIC_SRC_REGS; ++reg) {
+    for (size_t reg = 0; reg < plic->src_regs; ++reg) {
         uint32_t irqs = atomic_load_uint32_relax(&plic->pending[reg]) //
                       & atomic_load_uint32_relax(&plic->enable[ctx][reg]);
         while (irqs) {
@@ -173,7 +175,7 @@ static void plic_full_update(plic_dev_t* plic)
 
 static void plic_set_irq_prio(plic_dev_t* plic, uint32_t irq, uint32_t prio)
 {
-    if (likely(irq && irq < PLIC_SRC_LIMIT)) {
+    if (likely(irq && irq < plic->src_limit)) {
         uint32_t old_prio = atomic_swap_uint32(&plic->prio[irq], prio);
         if (prio < old_prio) {
             if (plic_irq_pending(plic, irq)) {
@@ -189,7 +191,13 @@ static void plic_set_irq_prio(plic_dev_t* plic, uint32_t irq, uint32_t prio)
 
 static void plic_set_enable_bits(plic_dev_t* plic, uint32_t ctx, uint32_t reg, uint32_t enable)
 {
-    if (likely(ctx < plic_ctx_count(plic) && reg < PLIC_SRC_REGS)) {
+    if (likely(ctx < plic_ctx_count(plic) && reg < plic->src_regs)) {
+        if (reg == plic->src_regs - 1 && (plic->src_limit & 31)) {
+            enable &= (1UL << (plic->src_limit & 31)) - 1;
+        }
+        if (!reg) {
+            enable &= ~1U; // Source zero is reserved.
+        }
         uint32_t old_enable    = atomic_swap_uint32(&plic->enable[ctx][reg], enable);
         uint32_t irqs_disabled = old_enable & ~enable;
         if (irqs_disabled) {
@@ -231,7 +239,7 @@ static uint32_t plic_claim_irq(plic_dev_t* plic, uint32_t ctx)
 
 static void plic_complete_irq(plic_dev_t* plic, uint32_t ctx, uint32_t irq)
 {
-    if (likely(ctx < plic_ctx_count(plic) && irq < PLIC_SRC_LIMIT)) {
+    if (likely(ctx < plic_ctx_count(plic) && irq < plic->src_limit)) {
         uint32_t raised = atomic_load_uint32_relax(&plic->raised[irq >> 5]) & bit_set32(irq);
         if (raised) {
             // Rearm raised interrupt as pending after completion
@@ -264,19 +272,19 @@ static void plic_mmio_read(rvvm_reg_dev_t* dev, void* data, size_t size, size_t 
         // Enable bits
         uint32_t reg = ((off - 0x2000) >> 2) & 0x1F;
         uint32_t ctx = (off - 0x2000) >> 7;
-        if (reg < PLIC_SRC_REGS && ctx < plic_ctx_count(plic)) {
+        if (reg < plic->src_regs && ctx < plic_ctx_count(plic)) {
             val = atomic_load_uint32_relax(&plic->enable[ctx][reg]);
         }
     } else if (off >= 0x1000) {
         // Pending bits
         uint32_t reg = (off - 0x1000) >> 2;
-        if (reg < PLIC_SRC_REGS) {
+        if (reg < plic->src_regs) {
             val = atomic_load_uint32_relax(&plic->pending[reg]);
         }
     } else {
         // Interrupt priority
         uint32_t irq = off >> 2;
-        if (irq && irq < PLIC_SRC_LIMIT) {
+        if (irq && irq < plic->src_limit) {
             val = atomic_load_uint32_relax(&plic->prio[irq]);
         }
     }
@@ -317,16 +325,16 @@ static void plic_suspend(rvvm_reg_dev_t* dev, rvvm_snapshot_t* snap, bool resume
     if (snap) {
         plic_dev_t* plic = rvvm_region_data(dev);
         rvvm_snapshot_section(snap, "riscv-plic");
-        for (size_t i = 0; i < PLIC_SRC_LIMIT; ++i) {
+        for (size_t i = 0; i < plic->src_limit; ++i) {
             rvvm_snapshot_field(snap, plic->prio[i]);
         }
-        for (size_t i = 0; i < PLIC_SRC_REGS; ++i) {
+        for (size_t i = 0; i < plic->src_regs; ++i) {
             rvvm_snapshot_field(snap, plic->pending[i]);
             rvvm_snapshot_field(snap, plic->raised[i]);
         }
         for (size_t i = 0; i < plic_ctx_count(plic); ++i) {
             rvvm_snapshot_field(snap, plic->threshold[i]);
-            for (size_t j = 0; j < PLIC_SRC_REGS; ++j) {
+            for (size_t j = 0; j < plic->src_regs; ++j) {
                 rvvm_snapshot_field(snap, plic->enable[i][j]);
             }
         }
@@ -349,7 +357,7 @@ static void plic_cleanup(rvvm_reg_dev_t* dev)
 static void plic_set_irq(rvvm_irq_dev_t* irq_dev, rvvm_irq_t irq, bool lvl)
 {
     plic_dev_t* plic = rvvm_irq_dev_data(irq_dev);
-    if (irq > 0 && irq < PLIC_SRC_LIMIT) {
+    if (irq > 0 && irq < plic->src_limit) {
         uint32_t mask = bit_set32(irq);
         if (lvl) {
             if (!(atomic_or_uint32(&plic->raised[irq >> 5], mask) & mask) && //
@@ -376,9 +384,14 @@ static const rvvm_irq_dev_cb_t plic_cb = {
     .set_irq = plic_set_irq,
 };
 
-RVVM_PUBLIC rvvm_intc_t* rvvm_riscv_plic_init(rvvm_machine_t* machine, rvvm_addr_t addr)
+RVVM_PUBLIC rvvm_intc_t* rvvm_riscv_plic_init_sized(rvvm_machine_t* machine, rvvm_addr_t addr, uint32_t sources)
 {
-    plic_dev_t*     plic = safe_new_obj(plic_dev_t);
+    if (!machine || !sources || sources >= PLIC_SRC_LIMIT) {
+        return NULL;
+    }
+    plic_dev_t* plic     = safe_new_obj(plic_dev_t);
+    plic->src_limit      = sources + 1;
+    plic->src_regs       = (plic->src_limit + 31) >> 5;
     rvvm_reg_desc_t desc = {
         .addr = addr,
         .size = 0x4000000UL,
@@ -393,7 +406,7 @@ RVVM_PUBLIC rvvm_intc_t* rvvm_riscv_plic_init(rvvm_machine_t* machine, rvvm_addr
     plic->enable    = safe_new_arr(uint32_t*, plic_ctx_count(plic));
     plic->threshold = safe_new_arr(uint32_t, plic_ctx_count(plic));
     for (size_t ctx = 0; ctx < plic_ctx_count(plic); ++ctx) {
-        plic->enable[ctx] = safe_new_arr(uint32_t, PLIC_SRC_REGS);
+        plic->enable[ctx] = safe_new_arr(uint32_t, plic->src_regs);
     }
 
     rvvm_reg_dev_t*  dev = rvvm_region_init_auto(machine, &desc);
@@ -422,7 +435,7 @@ RVVM_PUBLIC rvvm_intc_t* rvvm_riscv_plic_init(rvvm_machine_t* machine, rvvm_addr
         rvvm_fdt_prop_set_cells(plic_fdt, "interrupts-extended", vector_buffer(irq_ext), vector_size(irq_ext));
         rvvm_fdt_prop_set_u32(plic_fdt, "#interrupt-cells", 1);
         rvvm_fdt_prop_set_u32(plic_fdt, "#address-cells", 0);
-        rvvm_fdt_prop_set_u32(plic_fdt, "riscv,ndev", PLIC_SRC_LIMIT - 1);
+        rvvm_fdt_prop_set_u32(plic_fdt, "riscv,ndev", plic->src_limit - 1);
 
         vector_free(irq_ext);
 
@@ -434,6 +447,11 @@ RVVM_PUBLIC rvvm_intc_t* rvvm_riscv_plic_init(rvvm_machine_t* machine, rvvm_addr
         return plic->irq_dev;
     }
     return NULL;
+}
+
+RVVM_PUBLIC rvvm_intc_t* rvvm_riscv_plic_init(rvvm_machine_t* machine, rvvm_addr_t addr)
+{
+    return rvvm_riscv_plic_init_sized(machine, addr, 63);
 }
 
 POP_OPTIMIZATION_SIZE

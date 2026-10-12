@@ -177,10 +177,13 @@ static void rvvm_print_help(void)
         "Usage: rvvm <firmware> [-m 256M] [-k kernel] [-i drive.img] ...\n"
         "\n"
         "    <firmware>       Initial M-mode firmware (OpenSBI [+ U-Boot], etc)\n"
+        "    -board virt|spacemit-k1|starfive-jh7110  Select board (SoC profiles experimental)\n"
+        "    -k1-highmem     Use high RAM for RVVM U-Boot firmware (K1 profile)\n"
+        "    -jh7110-highmem  Use high RAM for RVVM U-Boot firmware (JH7110 profile)\n"
         "    -k, -kernel ...  Optional S-mode kernel payload (Linux, U-Boot, etc)\n"
         "    -i, -image  ...  Attach preferred storage image (Currently as NVMe)\n"
-        "    -m, -mem 1G      Memory amount, default: 256M\n"
-        "    -s, -smp 4       Cores count, default: 1\n"
+        "    -m, -mem 1G      Memory amount, default: 256M (K1/JH7110: 2G, K1 highmem: 1G)\n"
+        "    -s, -smp 4       Cores count, default: 1 (K1: 8, JH7110: 4)\n"
         "    -rv32            Enable 32-bit RISC-V, 64-bit by default\n"
         "    -cmdline    ...  Override payload kernel command line\n"
         "    -append     ...  Modify payload kernel command line\n"
@@ -191,6 +194,8 @@ static void rvvm_print_help(void)
         "    -nvme       ...  Explicitly attach storage image as NVMe device\n"
         "    -ata        ...  Explicitly attach storage image as ATA (IDE) device\n"
         "    -nogui           Disable display GUI\n"
+        "    -usb-input       Attach USB keyboard/mouse to display (OHCI)\n"
+        "    -absolute-mouse  Use absolute mouse input (automatic in Windows RDP)\n"
         "    -nogpu           Disable GPU\n"
         "    -nosound         Disable sound support\n"
         "    -nonet           Disable networking\n"
@@ -206,6 +211,32 @@ static void rvvm_print_help(void)
         "    -nojit           Disable RVJIT (For debug purposes, slow!)\n"
         "\n";
     print_stderr(help);
+}
+
+static bool rvvm_cli_k1(void)
+{
+    const char* board = rvvm_getarg("board");
+    return board && rvvm_strcmp(board, "spacemit-k1");
+}
+
+static bool rvvm_cli_jh7110(void)
+{
+    const char* board = rvvm_getarg("board");
+    return board && rvvm_strcmp(board, "starfive-jh7110");
+}
+
+static rvvm_reg_dev_t* rvvm_cli_uart(rvvm_machine_t* machine, chardev_t* chardev)
+{
+    if (rvvm_cli_jh7110()) {
+        return ns16550a_init_jh7110(machine, chardev);
+    }
+    return rvvm_cli_k1() ? ns16550a_init_k1(machine, chardev) : ns16550a_init_auto(machine, chardev);
+}
+
+static rvvm_reg_dev_t* rvvm_cli_framebuffer(rvvm_machine_t* machine, rvvm_fbdev_t* fbdev)
+{
+    return (rvvm_cli_k1() || rvvm_cli_jh7110()) ? rvvm_simplefb_init(machine, fbdev, 0xF2000000UL)
+                                                : rvvm_simplefb_init_auto(machine, fbdev);
 }
 
 static bool rvvm_cli_configure(rvvm_machine_t* machine, const char* bios, tap_dev_t* tap)
@@ -249,7 +280,9 @@ static bool rvvm_cli_configure(rvvm_machine_t* machine, const char* bios, tap_de
                 if (chardev == NULL && !rvvm_strcmp(arg_val, "null")) {
                     return false;
                 }
-                ns16550a_init_auto(machine, chardev);
+                if (!rvvm_cli_uart(machine, chardev)) {
+                    return false;
+                }
             } else if (rvvm_strcmp(arg_name, "res")) {
                 size_t    len = 0;
                 rvvm_fb_t fb  = {
@@ -258,7 +291,7 @@ static bool rvvm_cli_configure(rvvm_machine_t* machine, const char* bios, tap_de
                     .format = RVVM_RGB_XRGB8888,
                 };
                 if (arg_val[len] == 'x' && rvvm_fb_size(&fb)) {
-                    rvvm_simplefb_init_auto(machine, gui_window_get_fbdev(gui_rvvm_init(0, &fb, machine)));
+                    rvvm_cli_framebuffer(machine, gui_window_get_fbdev(gui_rvvm_init(0, &fb, machine)));
                 } else {
                     rvvm_error("Invalid resolution: %s, expects WxH", arg_val);
                     return false;
@@ -288,13 +321,37 @@ static int rvvm_cli_main(int argc, char** argv)
         return 0;
     }
 
-    // Default machine parameters: 1 core, 256M ram, riscv64, 640x480 screen
+    const char* board = rvvm_getarg("board");
+    if (board && !rvvm_strcmp(board, "virt") && !rvvm_cli_k1() && !rvvm_cli_jh7110()) {
+        rvvm_error("Unknown board: %s (use virt, spacemit-k1 or starfive-jh7110)", board);
+        return -1;
+    }
+    if ((rvvm_cli_k1() || rvvm_cli_jh7110())
+        && (rvvm_has_arg("rv32") || rvvm_has_arg("riscv_aia") || rvvm_has_arg("isa"))) {
+        rvvm_error("SoC profile requires the default RV64 ISA and PLIC");
+        return -1;
+    }
+
+    if (rvvm_has_arg("k1-highmem") && !rvvm_cli_k1()) {
+        rvvm_error("-k1-highmem requires -board spacemit-k1");
+        return -1;
+    }
+
+    if (rvvm_has_arg("jh7110-highmem") && !rvvm_cli_jh7110()) {
+        rvvm_error("-jh7110-highmem requires -board starfive-jh7110");
+        return -1;
+    }
+
+    // Generic defaults: 1 core, 256M RAM. K1: 8 cores, 2G (1G with highmem).
     size_t mem = rvvm_getarg_size("m");
     if (!mem) {
         mem = rvvm_getarg_size("mem");
     }
     if (!mem) {
-        mem = (256 << 20);
+        mem = rvvm_cli_k1()
+                ? (rvvm_has_arg("k1-highmem") ? (size_t)0x40000000ULL : (size_t)0x80000000ULL)
+                : (rvvm_cli_jh7110() ? (rvvm_has_arg("jh7110-highmem") ? (size_t)0x40000000ULL : (size_t)0x80000000ULL)
+                                     : (256 << 20));
     }
 
     size_t smp = rvvm_getarg_int("s");
@@ -302,7 +359,7 @@ static int rvvm_cli_main(int argc, char** argv)
         smp = rvvm_getarg_int("smp");
     }
     if (!smp) {
-        smp = 1;
+        smp = rvvm_cli_k1() ? 8 : (rvvm_cli_jh7110() ? 4 : 1);
     }
 
     const char* bios = rvvm_getarg("");
@@ -329,9 +386,18 @@ static int rvvm_cli_main(int argc, char** argv)
     }
 
     // Initialize basic peripherals (Interrupt controllers, PCI bus, clocks, power management)
-    rvvm_board_riscv_virt_init(machine, rvvm_has_arg("riscv_aia"));
-
-    i2c_oc_init_auto(machine);
+    bool board_ok = rvvm_cli_k1()
+                      ? rvvm_board_spacemit_k1_init(machine, rvvm_has_arg("k1-highmem"))
+                      : (rvvm_cli_jh7110() ? rvvm_board_starfive_jh7110_init(machine, rvvm_has_arg("jh7110-highmem"))
+                                           : rvvm_board_riscv_virt_init(machine, rvvm_has_arg("riscv_aia")));
+    if (!board_ok) {
+        rvvm_error("Failed to initialize board");
+        rvvm_free_machine(machine);
+        return -1;
+    }
+    if (!rvvm_cli_k1() && !rvvm_cli_jh7110()) {
+        i2c_oc_init_auto(machine);
+    }
 
     // usb_xhci_init(rvvm_get_pci_bus(machine));
 
@@ -340,7 +406,11 @@ static int rvvm_cli_main(int argc, char** argv)
     }
 
     if (!rvvm_has_arg("serial")) {
-        ns16550a_init_term_auto(machine);
+        if (!rvvm_cli_uart(machine, chardev_term_create())) {
+            rvvm_error("Failed to initialize console");
+            rvvm_free_machine(machine);
+            return -1;
+        }
     }
 
     if (!rvvm_has_arg("nogui") && !rvvm_has_arg("res")) {
@@ -360,7 +430,7 @@ static int rvvm_cli_main(int argc, char** argv)
             rvvm_bochs_display_init_auto(machine, gui_window_get_fbdev(win));
         } else {
             gui_window_t* win = gui_rvvm_init(0, NULL, machine);
-            rvvm_simplefb_init_auto(machine, gui_window_get_fbdev(win));
+            rvvm_cli_framebuffer(machine, gui_window_get_fbdev(win));
         }
     }
 

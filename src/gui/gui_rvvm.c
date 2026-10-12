@@ -8,6 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
 #include "gui_window.h"
+#include <devices/usb-ohci.h>
 
 PUSH_OPTIMIZATION_SIZE
 
@@ -21,9 +22,9 @@ typedef struct {
     uint32_t width;
     uint32_t height;
 
-    bool ctrl;
-    bool alt;
-    bool grab;
+    uint8_t ctrl;
+    uint8_t alt;
+    bool    grab;
 } rvvm_window_t;
 
 static const uint8_t rvvm_logo_pix[] = {
@@ -45,7 +46,7 @@ static void rvvm_gui_update_title(gui_window_t* win)
     if (rvvm->grab) {
         gui_window_set_title(win, "RVVM - Press Ctrl+Alt+G to release grab");
     } else {
-        gui_window_set_title(win, "RVVM");
+        gui_window_set_title(win, "RVVM - Click to capture; Ctrl+Alt+G to release");
     }
 }
 
@@ -85,21 +86,25 @@ static void rvvm_gui_on_focus_lost(gui_window_t* win)
         hid_keyboard_release(rvvm->keyboard, key);
     }
 
+    hid_mouse_release(rvvm->mouse, 0xff);
+    rvvm->ctrl = rvvm->alt = 0;
+
     // Ungrab input
     rvvm_gui_grab_input(win, false);
 }
 
 static void rvvm_gui_handle_modkeys(rvvm_window_t* rvvm, hid_key_t key, bool pressed)
 {
-    switch (key) {
-        case HID_KEY_LEFTALT:
-        case HID_KEY_RIGHTALT:
-            rvvm->alt = pressed;
-            break;
-        case HID_KEY_LEFTCTRL:
-        case HID_KEY_RIGHTCTRL:
-            rvvm->ctrl = pressed;
-            break;
+    uint8_t  bit  = (key == HID_KEY_RIGHTALT || key == HID_KEY_RIGHTCTRL) ? 2 : 1;
+    uint8_t* mods = NULL;
+    if (key == HID_KEY_LEFTALT || key == HID_KEY_RIGHTALT) {
+        mods = &rvvm->alt;
+    }
+    if (key == HID_KEY_LEFTCTRL || key == HID_KEY_RIGHTCTRL) {
+        mods = &rvvm->ctrl;
+    }
+    if (mods) {
+        *mods = pressed ? (*mods | bit) : (*mods & ~bit);
     }
 }
 
@@ -109,10 +114,13 @@ static void rvvm_gui_on_key_press(gui_window_t* win, hid_key_t key)
     rvvm_gui_handle_modkeys(rvvm, key, true);
     if (rvvm->ctrl && rvvm->alt) {
         switch (key) {
-            case HID_KEY_G:
+            case HID_KEY_G: {
                 // Grab mouse & keyboard
-                rvvm_gui_grab_input(win, !rvvm->grab);
+                bool grab = !rvvm->grab;
+                rvvm_gui_on_focus_lost(win);
+                rvvm_gui_grab_input(win, grab);
                 return;
+            }
         }
     }
     hid_keyboard_press(rvvm->keyboard, key);
@@ -128,6 +136,10 @@ static void rvvm_gui_on_key_release(gui_window_t* win, hid_key_t key)
 static void rvvm_gui_on_mouse_press(gui_window_t* win, hid_btns_t btns)
 {
     rvvm_window_t* rvvm = gui_window_get_data(win);
+    if (!rvvm->grab) {
+        rvvm_gui_grab_input(win, true);
+        return; // First click acquires capture without clicking in the guest.
+    }
     hid_mouse_press(rvvm->mouse, btns);
 }
 
@@ -211,9 +223,13 @@ void gui_rvvm_register(gui_window_t* win, rvvm_machine_t* machine)
 {
     rvvm_window_t* rvvm = safe_new_obj(rvvm_window_t);
 
-    rvvm->machine  = machine;
-    rvvm->keyboard = hid_keyboard_init_auto(machine);
-    rvvm->mouse    = hid_mouse_init_auto(machine);
+    rvvm->machine   = machine;
+    usb_ohci_t* usb = rvvm_has_arg("usb-input") ? usb_ohci_init(machine) : NULL;
+    if (rvvm_has_arg("usb-input") && !usb) {
+        rvvm_fatal("Unable to attach USB input controller");
+    }
+    rvvm->keyboard = usb ? hid_keyboard_init_usb(usb) : hid_keyboard_init_auto(machine);
+    rvvm->mouse    = usb ? hid_mouse_init_usb(usb) : hid_mouse_init_auto(machine);
 
     gui_window_set_data(win, rvvm);
     gui_window_register(win, &rvvm_gui_cb);

@@ -21,6 +21,9 @@ RVVM_PUBLIC rvvm_reg_dev_t* rvvm_ns16550a_init(rvvm_machine_t* machine, /**/
                                                rvvm_irq_dev_t* irq_dev, /**/
                                                rvvm_irq_t      irq);
 
+rvvm_reg_dev_t* ns16550a_init_k1(rvvm_machine_t* machine, chardev_t* chardev);
+rvvm_reg_dev_t* ns16550a_init_jh7110(rvvm_machine_t* machine, chardev_t* chardev);
+
 static inline rvvm_reg_dev_t* ns16550a_init_auto(rvvm_machine_t* machine, chardev_t* chardev)
 {
     return rvvm_ns16550a_init(machine, chardev, 0x10000000UL, 0, NULL, 0);

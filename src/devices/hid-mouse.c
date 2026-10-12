@@ -11,6 +11,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "hid_api.h"
 #include "i2c-hid.h"
 #include "spinlock.h"
+#include "usb-ohci.h"
 #include "utils.h"
 
 PUSH_OPTIMIZATION_SIZE
@@ -211,7 +212,7 @@ static void hid_mouse_setup(hid_dev_t* dev, hid_mouse_t* mouse, bool tablet)
                                    : hid_mouse_remove;
 }
 
-PUBLIC hid_mouse_t* hid_mouse_init_auto(rvvm_machine_t* machine)
+static hid_mouse_t* hid_mouse_init(rvvm_machine_t* machine, usb_ohci_t* usb)
 {
     hid_mouse_t* mouse = safe_new_obj(hid_mouse_t);
 
@@ -220,8 +221,13 @@ PUBLIC hid_mouse_t* hid_mouse_init_auto(rvvm_machine_t* machine)
     hid_mouse_setup(&mouse->tablet_hid_dev, mouse, true);
     hid_mouse_setup(&mouse->mouse_hid_dev, mouse, false);
 
-    i2c_hid_init_auto(machine, &mouse->tablet_hid_dev);
-    i2c_hid_init_auto(machine, &mouse->mouse_hid_dev);
+    if (usb) {
+        usb_ohci_attach_hid(usb, &mouse->tablet_hid_dev, 0);
+        usb_ohci_attach_hid(usb, &mouse->mouse_hid_dev, 2);
+    } else {
+        i2c_hid_init_auto(machine, &mouse->tablet_hid_dev);
+        i2c_hid_init_auto(machine, &mouse->mouse_hid_dev);
+    }
 
     return mouse;
 }
@@ -308,3 +314,13 @@ PUBLIC void hid_mouse_place(hid_mouse_t* mouse, int32_t x, int32_t y)
 }
 
 POP_OPTIMIZATION_SIZE
+
+hid_mouse_t* hid_mouse_init_usb(usb_ohci_t* hc)
+{
+    return hid_mouse_init(NULL, hc);
+}
+
+PUBLIC hid_mouse_t* hid_mouse_init_auto(rvvm_machine_t* machine)
+{
+    return hid_mouse_init(machine, NULL);
+}
