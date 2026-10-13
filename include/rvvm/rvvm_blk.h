@@ -45,7 +45,7 @@ RVVM_EXTERN_C_BEGIN
  * Open a block device image
  *
  * \param name Image name (File path, etc)
- * \param fmt  Specific format identifier, or NULL to probe a matching one
+ * \param fmt  "raw", "vhd" (fixed/dynamic), or NULL to auto-detect
  * \param opts Open options (Read/Write/Create), zero implies RVVM_BLK_RW | RVVM_BLK_DIRECT
  * \return     Block device image handle, or NULL on failure
  */

@@ -10,6 +10,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include <rvvm/rvvm_blk.h>
 
 #include "blk_io.h"
+#include "blk_vhd.h"
 #include "utils.h"
 
 PUSH_OPTIMIZATION_SIZE
@@ -105,7 +106,9 @@ struct rvvm_blk_dev {
 RVVM_PUBLIC rvvm_blk_dev_t* rvvm_blk_open(const char* name, const char* fmt, uint32_t opts)
 {
     rvvm_blk_dev_t* blk = rvvm_blk_init();
-    if (!fmt || rvvm_strcmp(fmt, blk_raw_cb.name)) {
+    if ((!fmt && rvvm_blk_vhd_detect(name)) || (fmt && rvvm_strcmp(fmt, rvvm_blk_vhd_cb.name))) {
+        rvvm_blk_register_cb(blk, &rvvm_blk_vhd_cb, opts);
+    } else if (!fmt || rvvm_strcmp(fmt, blk_raw_cb.name)) {
         rvvm_blk_register_cb(blk, &blk_raw_cb, opts);
     }
     if (blk->cb && blk->cb->probe && blk->cb->probe(blk, name, blk->opts)) {
@@ -121,7 +124,7 @@ RVVM_PUBLIC rvvm_blk_dev_t* rvvm_blk_open(const char* name, const char* fmt, uin
 RVVM_PUBLIC void rvvm_blk_close(rvvm_blk_dev_t* blk)
 {
     if (blk) {
-        if (blk->cb->close) {
+        if (blk->cb && blk->cb->close) {
             blk->cb->close(blk);
         }
         safe_free(blk);

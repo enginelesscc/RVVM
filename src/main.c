@@ -181,7 +181,7 @@ static void rvvm_print_help(void)
         "    -k1-highmem     Use high RAM for RVVM U-Boot firmware (K1 profile)\n"
         "    -jh7110-highmem  Use high RAM for RVVM U-Boot firmware (JH7110 profile)\n"
         "    -k, -kernel ...  Optional S-mode kernel payload (Linux, U-Boot, etc)\n"
-        "    -i, -image  ...  Attach preferred storage image (Currently as NVMe)\n"
+        "    -i, -image  ...  Attach raw or fixed/dynamic VHD image as NVMe\n"
         "    -m, -mem 1G      Memory amount, default: 256M (K1/JH7110: 2G, K1 highmem: 1G)\n"
         "    -s, -smp 4       Cores count, default: 1 (K1: 8, JH7110: 4)\n"
         "    -rv32            Enable 32-bit RISC-V, 64-bit by default\n"
