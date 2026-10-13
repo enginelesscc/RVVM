@@ -38,6 +38,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <devices/i2c-oc.h>
 #include <devices/ns16550a.h>
 #include <devices/rtl8169.h>
+#include <devices/e1000e.h>
 #include <devices/sound-hda.h>
 
 #include <devices/tap_api.h>
@@ -199,6 +200,7 @@ static void rvvm_print_help(void)
         "    -nogpu           Disable GPU\n"
         "    -nosound         Disable sound support\n"
         "    -nonet           Disable networking\n"
+        "    -nic <model>     NIC model: e1000e (default), rtl8169\n"
         "    -serial     ...  Add more serial ports (Via pty/pipe path), or null\n"
         "    -dtb        ...  Pass custom Device Tree Blob to the machine\n"
         "    -dumpdtb    ...  Dump auto-generated DTB to file\n"
@@ -441,8 +443,21 @@ static int rvvm_cli_main(int argc, char** argv)
     tap_dev_t* tap = NULL;
 #ifdef USE_NET
     if (!rvvm_has_arg("nonet")) {
+        const char* model = rvvm_getarg("nic");
+        if (model && strcmp(model, "e1000e") && strcmp(model, "rtl8169")) {
+            rvvm_error("Unknown NIC model: %s", model);
+            rvvm_free_machine(machine);
+            return -1;
+        }
         tap = tap_open();
-        rvvm_rtl8169_init(machine, tap, RVVM_PCI_ADDR_ANY);
+        rvvm_pci_func_t* nic = NULL;
+        if (tap) nic = model && !strcmp(model, "rtl8169") ? rvvm_rtl8169_init(machine, tap, RVVM_PCI_ADDR_ANY)
+                                                       : rvvm_e1000e_init(machine, tap, RVVM_PCI_ADDR_ANY);
+        if (!nic) {
+            rvvm_error("Failed to initialize NIC");
+            rvvm_free_machine(machine);
+            return -1;
+        }
     }
 #endif
 

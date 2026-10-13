@@ -237,7 +237,7 @@ file(GLOB SRC_USE_RV64 LIST_DIRECTORIES FALSE CONFIGURE_DEPENDS "${RVVM_SRC_DIR}
 
 # Libraries needed for specific feature
 if (WIN32)
-	set(LIBS_USE_NET "ws2_32")
+	set(LIBS_USE_NET "ws2_32" "iphlpapi")
 elseif (HAIKU)
 	set(LIBS_USE_NET "network")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "SunOS") # Solaris, Illumos, etc
@@ -356,6 +356,14 @@ endif()
 add_executable(rvvm_cli ${RVVM_MAIN_SRC} $<TARGET_OBJECTS:rvvm_objlib>)
 target_link_libraries(rvvm_cli PRIVATE rvvm_common)
 set_target_properties(rvvm_cli PROPERTIES OUTPUT_NAME rvvm)
+
+option(RVVM_NET_TESTS "Build e1000e DMA/user networking regression test" OFF)
+if (RVVM_NET_TESTS AND USE_NET AND NOT USE_TAP_LINUX)
+	add_executable(rvvm_net_test tests/e1000e-usernet.c $<TARGET_OBJECTS:rvvm_objlib>)
+	target_link_libraries(rvvm_net_test PRIVATE rvvm_common)
+	enable_testing()
+	add_test(NAME e1000e_usernet COMMAND rvvm_net_test)
+endif()
 
 # Main executable
 add_executable(rvvm_user ${RVVM_USER_MAIN_SRC} $<TARGET_OBJECTS:rvvm_objlib>)

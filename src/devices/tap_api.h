@@ -30,7 +30,9 @@ PUBLIC tap_dev_t* tap_open(void);
 // Attach to the NIC
 PUBLIC void tap_attach(tap_dev_t* tap, const tap_net_dev_t* net_dev);
 
-// Send Ethernet frame (Without CRC)
+// Queue Ethernet frame (Without CRC). Userspace backend copies into a bounded
+// queue and handles protocols/sockets asynchronously. False means queue full,
+// invalid frame or shutdown; callers may drop just like a congested link.
 PUBLIC bool tap_send(tap_dev_t* tap, const void* data, size_t size);
 
 // Set/get interface MAC address

@@ -9,6 +9,7 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
+#include "feature_test.h"
 #include "tap_api.h"
 #include "networking.h"
 #include "threading.h"
@@ -18,6 +19,33 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "vector.h"
 #include "mem_ops.h"
 #include "utils.h"
+
+#ifdef HOST_TARGET_WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <iphlpapi.h>
+#include <icmpapi.h>
+
+/* Event-based ICMP works without raw-socket privileges on Windows. */
+typedef struct {
+    HANDLE handle;
+    HANDLE event;
+    net_addr_t src, dst;
+    size_t size;
+    uint8_t request[1460];
+    union {
+        ICMP_ECHO_REPLY header; /* Keep OS reply structures naturally aligned. */
+        uint8_t bytes[sizeof(ICMP_ECHO_REPLY) + 1460 + 8];
+    } reply;
+} tap_ping_t;
+#define TAP_PING_LIMIT 32
+#endif
+
+#define TAP_TX_LIMIT 256
+typedef struct {
+    size_t size;
+    uint8_t data[TAP_FRAME_SIZE];
+} tap_frame_t;
 
 #define GATEWAY_MAC ((const uint8_t*)"\x00\x08\x97\xDE\xC0\xDE")
 #define GATEWAY_IP  ((const uint8_t*)"\xC0\xA8\x00\x01")
@@ -128,6 +156,14 @@ typedef vector_t(tap_sock_t*) ts_vec_t;
 
 struct tap_dev {
     spinlock_t    lock;
+    /* This lock only covers bounded copies, never protocol work or sockets. */
+    spinlock_t    queue_lock;
+    tap_frame_t   queue[TAP_TX_LIMIT];
+    uint32_t      queue_head, queue_count;
+    uint32_t      stopping;
+#ifdef HOST_TARGET_WIN32
+    tap_ping_t*   pings[TAP_PING_LIMIT];
+#endif
     tap_net_dev_t net;
     net_poll_t*   poll;
     hashmap_t     udp_ports;
@@ -174,13 +210,13 @@ static uint16_t ip_checksum(const void* data, size_t size, uint16_t initial)
 
 static uint8_t* create_eth_frame(tap_dev_t* tap, uint8_t* frame, uint16_t ether_type)
 {
-    memcpy(frame, tap->mac, HLEN_ETHER);
+    tap_get_mac(tap, frame);
     memcpy(frame + HLEN_ETHER, GATEWAY_MAC, HLEN_ETHER);
     write_uint16_be_m(frame + 12, ether_type);
     return frame + ETH2_HDR_SIZE;
 }
 
-static void create_arp_frame(tap_dev_t* tap, uint8_t* frame, const void* req_ip)
+static void create_arp_frame(tap_dev_t* tap, uint8_t* frame, const void* req_ip, const void* client_ip)
 {
     write_uint16_be_m(frame,     HTYPE_ETHER);
     write_uint16_be_m(frame + 2, PTYPE_IPv4);
@@ -189,8 +225,8 @@ static void create_arp_frame(tap_dev_t* tap, uint8_t* frame, const void* req_ip)
     write_uint16_be_m(frame + 6, OP_RESPONSE);
     memcpy(frame + 8,  GATEWAY_MAC, HLEN_ETHER);
     memcpy(frame + 14, req_ip,      PLEN_IPv4);
-    memcpy(frame + 18, tap->mac,    HLEN_ETHER);
-    memcpy(frame + 24, req_ip,      PLEN_IPv4); // Сlient IP
+    tap_get_mac(tap, frame + 18);
+    memcpy(frame + 24, client_ip,   PLEN_IPv4); // Сlient IP
 }
 
 static uint8_t* create_ipv4_frame(uint8_t* frame, size_t size, uint8_t proto, const void* dest_ip, const void* src_ip)
@@ -290,12 +326,68 @@ static void emulate_icmp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net
     eth_send(tap, frame, size + IPv4_HDR_SIZE + ETH2_HDR_SIZE);
 }
 
+static bool tap_addr_allowed(const tap_dev_t* tap, const net_addr_t* addr);
+
+#ifdef HOST_TARGET_WIN32
+static void tap_ping_free(tap_ping_t* ping)
+{
+    IcmpCloseHandle(ping->handle);
+    CloseHandle(ping->event);
+    free(ping);
+}
+
+static void tap_ping_poll(tap_dev_t* tap)
+{
+    for (unsigned i = 0; i < TAP_PING_LIMIT; ++i) {
+        tap_ping_t* ping = tap->pings[i];
+        if (!ping || WaitForSingleObject(ping->event, 0) != WAIT_OBJECT_0) continue;
+        ICMP_ECHO_REPLY* reply = &ping->reply.header;
+        if (IcmpParseReplies(&ping->reply, sizeof(ping->reply)) && reply->Status == IP_SUCCESS
+            && reply->DataSize == ping->size - 8) {
+            memcpy(ping->request + 8, reply->Data, reply->DataSize);
+            memcpy(ping->dst.ip, &reply->Address, 4);
+            emulate_icmp(tap, ping->request, ping->size, &ping->dst, &ping->src);
+        }
+        /* Timeouts and unreachable destinations never produce a success reply. */
+        tap_ping_free(ping);
+        tap->pings[i] = NULL;
+    }
+}
+
+static void tap_ping_send(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
+{
+    unsigned slot = 0;
+    while (slot < TAP_PING_LIMIT && tap->pings[slot]) ++slot;
+    if (slot == TAP_PING_LIMIT) return;
+    tap_ping_t* ping = safe_new_obj(tap_ping_t);
+    ping->handle = IcmpCreateFile();
+    ping->event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (ping->handle == INVALID_HANDLE_VALUE || !ping->event) {
+        tap_ping_free(ping);
+        return;
+    }
+    ping->src = *src; ping->dst = *dst; ping->size = size;
+    memcpy(ping->request, buffer, size);
+    IPAddr dest;
+    memcpy(&dest, dst->ip, 4);
+    DWORD result = IcmpSendEcho2(ping->handle, ping->event, NULL, NULL, dest,
+                                ping->request + 8, size - 8, NULL, &ping->reply, sizeof(ping->reply), 1000);
+    if (!result && GetLastError() != ERROR_IO_PENDING) { tap_ping_free(ping); return; }
+    if (result) SetEvent(ping->event);
+    tap->pings[slot] = ping;
+}
+#endif
+
 static void handle_icmp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
 {
-    static bool icmp_sock_available = true;
-    if (size >= ICMP_HDR_SIZE && size < 1460 && read_uint16_be_m(buffer) == ICMP_ECHO_REQ) {
+    if (size >= 8 && size <= 1460 && read_uint16_be_m(buffer) == ICMP_ECHO_REQ) {
+        if (!memcmp(dst->ip, GATEWAY_IP, 4)) { emulate_icmp(tap, buffer, size, dst, src); return; }
+        if (!tap_addr_allowed(tap, dst)) return;
+#ifdef HOST_TARGET_WIN32
+        tap_ping_send(tap, buffer, size, dst, src);
+#else
         uint16_t icmp_id = read_uint16_be_m(buffer+4);
-        if (likely(icmp_sock_available)) {
+        {
             spin_lock(&tap->lock);
             tap_sock_t* ts = (tap_sock_t*)hashmap_get(&tap->icmp_ids, icmp_id);
             if (ts == NULL) {
@@ -314,9 +406,8 @@ static void handle_icmp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_
                     net_event_t event = { .data = ts, .flags = NET_POLL_RECV, };
                     net_poll_add(tap->poll, ts->sock, &event);
                 } else {
-                    icmp_sock_available = false;
+                    DO_ONCE(rvvm_warn("Host ICMP sockets unavailable; external ping is disabled"));
                     spin_unlock(&tap->lock);
-                    emulate_icmp(tap, buffer, size, dst, src);
                     return;
                 }
             }
@@ -326,33 +417,42 @@ static void handle_icmp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_
             net_icmp_send(ts->sock, buffer, size, dst);
             return;
         }
-        emulate_icmp(tap, buffer, size, dst, src);
+#endif
     }
 }
 
 static void handle_dhcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* src)
 {
-    if (unlikely(size < 240)) {
+    if (unlikely(size < 240 || buffer[0] != OP_REQUEST || buffer[1] != HTYPE_ETHER || buffer[2] != HLEN_ETHER
+                 || read_uint32_be_m(buffer + 236) != 0x63825363)) {
         // Packet too small
         return;
     }
 
     uint8_t msg_type = DHCP_ENDMARK;
-    for (size_t i = 240; i + 2 < size;) {
-        if (buffer[i] == DHCP_MSG_TYPE) {
-            msg_type = buffer[i+2];
+    for (size_t i = 240; i < size;) {
+        uint8_t option = buffer[i++];
+        if (option == DHCP_ENDMARK) break;
+        if (!option) continue; /* padding has no length */
+        if (i >= size) return;
+        size_t len = buffer[i++];
+        if (len > size - i) return;
+        if (option == DHCP_MSG_TYPE && len == 1) {
+            msg_type = buffer[i];
             break;
         }
-        i += 2 + buffer[i + 1];
+        i += len;
     }
-    if (msg_type == DHCP_ENDMARK) {
+    if (msg_type != DHCP_DISCOVER && msg_type != DHCP_REQUEST) {
         // Lacking DHCP message type
         return;
     }
 
     uint8_t frame[TAP_FRAME_SIZE];
     uint8_t* ipv4 = create_eth_frame(tap, frame, ETH2_IPv4);
-    const uint8_t* reply_ip = read_uint32_be_m(buffer + 12) ? buffer + 12 : (const uint8_t*)"\xFF\xFF\xFF\xFF";
+    if (!read_uint32_be_m(buffer + 12) || (read_uint16_be_m(buffer + 10) & 0x8000)) memset(frame, 255, 6);
+    const uint8_t* reply_ip = read_uint32_be_m(buffer + 12) && !(read_uint16_be_m(buffer + 10) & 0x8000)
+                                 ? buffer + 12 : (const uint8_t*)"\xFF\xFF\xFF\xFF";
     uint8_t* udp = create_ipv4_frame(ipv4, 278 + UDP_HDR_SIZE, IP_PROTO_UDP, reply_ip, GATEWAY_IP);
     uint8_t* dhcp = create_udp_datagram(udp, 278, 68, 67);
 
@@ -370,7 +470,7 @@ static void handle_dhcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_
     memcpy(dhcp + 28, buffer + 28, 16);       // Client hardware address
 
     memset(dhcp + 44, 0, 192);                // BOOTP (legacy)
-    memcpy(dhcp + 44, "RVVM DHCP", 10);       // Server name
+    memcpy(dhcp + 44, "rvvm-dhcp", 10);       // Server name
 
     memcpy(dhcp + 236, buffer + 236, 4);      // Magic cookie
 
@@ -445,7 +545,7 @@ static void handle_udp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
     dst->port = read_uint16_be_m(buffer + 2);
     uint16_t udp_size = read_uint16_be_m(buffer + 4);
     const uint8_t* udb_buff = buffer + UDP_HDR_SIZE;
-    if (unlikely(udp_size > size)) {
+    if (unlikely(udp_size < UDP_HDR_SIZE || udp_size > size)) {
         // Encoded size exceeds frame size
         return;
     }
@@ -457,6 +557,8 @@ static void handle_udp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
         handle_dhcp(tap, udb_buff, udp_size, src);
         return;
     }
+
+    if (!tap_addr_allowed(tap, dst)) return;
 
     spin_lock(&tap->lock);
     tap_sock_t* ts = (tap_sock_t*)hashmap_get(&tap->udp_ports, src->port);
@@ -478,7 +580,7 @@ static void handle_udp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
     }
     if (ts->timeout != BOUND_INF) ts->timeout = 0;
     spin_unlock(&tap->lock);
-    if (tap_addr_allowed(tap, dst)) net_udp_send(ts->sock, udb_buff, udp_size, dst);
+    net_udp_send(ts->sock, udb_buff, udp_size, dst);
 }
 
 static inline uint8_t* tcp_seg_buffer(tcp_segment_t* seg)
@@ -611,6 +713,7 @@ static bool tap_tcp_arm_poll(tap_dev_t* tap, tap_sock_t* ts)
 
 static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_addr_t* dst, net_addr_t* src)
 {
+    if (size < TCP_HDR_SIZE || !tap_addr_allowed(tap, dst)) return;
     src->port         = read_uint16_be_m(buffer);
     dst->port         = read_uint16_be_m(buffer + 2);
     uint32_t seq      = read_uint32_be_m(buffer + 4);
@@ -618,6 +721,7 @@ static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
     size_t   data_off = (buffer[12] >> 4) << 2;
     uint8_t  flags    = buffer[13];
     uint16_t window   = read_uint16_be_m(buffer + 14);
+    if (data_off < TCP_HDR_SIZE || data_off > size) return;
 
     spin_lock(&tap->lock);
     tap_sock_t* ts = tap_tcp_lookup(tap, dst, src);
@@ -628,7 +732,7 @@ static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
         bool cleanup = false;
         tcp->window = window; // Scale the window
         ts->timeout = 1; // Allow TCP retransmit, but reset keepalive
-        if (flags & TCP_FLAG_ACK) {
+        if ((flags & TCP_FLAG_ACK) && tcp_ack_amount(tcp, ack) <= tcp->seq - tcp->seq_ack) {
             while (tcp->head && tcp_ack_amount(tcp, ack) >= tcp->head->size) {
                 // Free ACKed segments
                 tcp_segment_t* seg = tcp->head;
@@ -706,10 +810,7 @@ static void handle_tcp(tap_dev_t* tap, const uint8_t* buffer, size_t size, net_a
         if (reset) {
             // Reset the connection
             if (!(flags & TCP_FLAG_RST)) tap_tcp_segment(tap, ts, TCP_FLAG_RST);
-            if (!!(tcp->state & TCP_STATE_ESTABLISHED) != !!(tcp->state & TCP_STATE_RECV_OPEN)) {
-                // Closed completely
-                cleanup = true;
-            }
+            cleanup = true; /* TX runs after the poll batch; no stale event can reference it. */
             tcp->state = TCP_STATE_CLOSED;
         } else if (resp_ack) {
             // Handle keepalive, ACKs
@@ -759,7 +860,8 @@ static void handle_ipv4(tap_dev_t* tap, const uint8_t* buffer, size_t size)
         // This is a fragmented frame
         return;
     }
-    if (unlikely(total_length < header_length || size < total_length)) {
+    if (unlikely((buffer[0] >> 4) != 4 || header_length < IPv4_HDR_SIZE
+                 || total_length < header_length || size < total_length)) {
         // Bogus IP header length or encoded size exceeds frame size
         return;
     }
@@ -834,12 +936,12 @@ static void handle_arp(tap_dev_t* tap, const uint8_t* buffer, size_t size)
         && memcmp(target_ip, CLIENT_IP, PLEN_IPv4)
         && memcmp(sender_ip, net_ipv4_any_addr.ip, PLEN_IPv4)) {
         uint8_t* arp = create_eth_frame(tap, frame, ETH2_ARP);
-        create_arp_frame(tap, arp, target_ip);
+        create_arp_frame(tap, arp, target_ip, sender_ip);
         eth_send(tap, frame, ARPv4_HDR_SIZE + ETH2_HDR_SIZE);
     }
 }
 
-bool tap_send(tap_dev_t* tap, const void* data, size_t size)
+static bool tap_process_frame(tap_dev_t* tap, const void* data, size_t size)
 {
     if (unlikely(size < ETH2_HDR_SIZE)) {
         // Packet too small
@@ -863,13 +965,49 @@ bool tap_send(tap_dev_t* tap, const void* data, size_t size)
 
 bool tap_get_mac(tap_dev_t* tap, uint8_t mac[6])
 {
+    if (!tap) return false;
+    spin_lock(&tap->queue_lock);
     memcpy(mac, tap->mac, 6);
+    spin_unlock(&tap->queue_lock);
     return true;
 }
 
 bool tap_set_mac(tap_dev_t* tap, const uint8_t mac[6])
 {
+    if (!tap) return false;
+    spin_lock(&tap->queue_lock);
     memcpy(tap->mac, mac, 6);
+    spin_unlock(&tap->queue_lock);
+    return true;
+}
+
+bool tap_send(tap_dev_t* tap, const void* data, size_t size)
+{
+    if (!tap || !data || size < ETH2_HDR_SIZE || size > TAP_FRAME_SIZE || atomic_load_uint32(&tap->stopping)) return false;
+    spin_lock(&tap->queue_lock);
+    if (tap->queue_count == TAP_TX_LIMIT) { spin_unlock(&tap->queue_lock); return false; }
+    tap_frame_t* frame = &tap->queue[(tap->queue_head + tap->queue_count) % TAP_TX_LIMIT];
+    frame->size = size;
+    memcpy(frame->data, data, size);
+    bool wake = tap->queue_count++ == 0;
+    spin_unlock(&tap->queue_lock);
+    /* Both ends are nonblocking; the timeout also guarantees progress if full. */
+    if (wake) net_tcp_send(tap->shut[1], "w", 1);
+    return true;
+}
+
+static bool tap_drain_tx(tap_dev_t* tap)
+{
+    for (unsigned i = 0; i < 64; ++i) {
+        tap_frame_t frame;
+        spin_lock(&tap->queue_lock);
+        if (!tap->queue_count) { spin_unlock(&tap->queue_lock); return false; }
+        frame = tap->queue[tap->queue_head];
+        tap->queue_head = (tap->queue_head + 1) % TAP_TX_LIMIT;
+        --tap->queue_count;
+        spin_unlock(&tap->queue_lock);
+        tap_process_frame(tap, frame.data, frame.size);
+    }
     return true;
 }
 
@@ -933,7 +1071,7 @@ static void tap_icmp_recv(tap_dev_t* tap, tap_sock_t* ts)
     int32_t  result = net_icmp_recv(ts->sock, buffer + offset, size, &addr);
     uint16_t icmp_id = net_icmp_id(ts->sock);
 
-    if (result >= 0) {
+    if (result >= 8) {
         size = result;
         tap_addr_convert(&addr);
         uint8_t* ipv4 = create_eth_frame(tap, buffer, ETH2_IPv4);
@@ -955,7 +1093,7 @@ static void tap_tcp_recv(tap_dev_t* tap, tap_sock_t* ts)
     }
 
     tcp_segment_t* seg = safe_malloc(sizeof(tcp_segment_t) + TAP_FRAME_SIZE);
-    size_t size = TAP_FRAME_SIZE - TCP_WRAP_SIZE;
+    size_t size = EVAL_MIN(TAP_FRAME_SIZE - TCP_WRAP_SIZE, ts->tcp->window - (ts->tcp->seq - ts->tcp->seq_ack));
     int32_t result = net_tcp_recv(ts->sock, tcp_seg_buffer(seg) + TCP_WRAP_SIZE, size);
     if (result > 0) {
         // Push a segment and buffer it for retransmit
@@ -1105,14 +1243,15 @@ static void* tap_thread(void* arg)
 
     net_event_t events[64];
     rvtimer_init(&timer, 1000);
-    while (true) {
-        size_t size = net_poll_wait(tap->poll, events, 64, 200);
+    bool pending = false;
+    while (!atomic_load_uint32(&tap->stopping)) {
+        size_t size = net_poll_wait(tap->poll, events, 64, pending ? 0 : 10);
         spin_lock(&tap->lock);
         for (size_t i=0; i<size; ++i) {
             if (events[i].data == NULL) {
-                // Shutdown notification
-                spin_unlock(&tap->lock);
-                return NULL;
+                uint8_t wake[64];
+                net_tcp_recv(tap->shut[0], wake, sizeof(wake));
+                continue;
             }
             tap_sock_t* ts = events[i].data;
             if (ts->tcp) {
@@ -1126,6 +1265,7 @@ static void* tap_thread(void* arg)
                         tap_tcp_segment(tap, ts, TCP_FLAG_SYN | TCP_FLAG_ACK);
                     } else {
                         // Connection refused or timeout
+                        tap_tcp_segment(tap, ts, TCP_FLAG_RST | TCP_FLAG_ACK);
                         tap_tcp_close(tap, ts);
                     }
                 } else if (ts->tcp->state == TCP_STATE_LISTEN) {
@@ -1146,6 +1286,12 @@ static void* tap_thread(void* arg)
             rvtimer_init(&timer, 1000);
         }
         spin_unlock(&tap->lock);
+        /* Process after the entire poll batch, which may still reference sockets
+         * that a guest RST/FIN would otherwise free. Only this thread handles TX. */
+        pending = tap_drain_tx(tap);
+#ifdef HOST_TARGET_WIN32
+        tap_ping_poll(tap);
+#endif
     }
     return NULL;
 }
@@ -1160,9 +1306,18 @@ tap_dev_t* tap_open(void)
     tap->poll = net_poll_create();
 
     // Create shutdown sockpair & watch for it
-    net_tcp_sockpair(tap->shut);
+    if (!tap->poll || !net_tcp_sockpair(tap->shut)) {
+        net_poll_close(tap->poll);
+        free(tap);
+        return NULL;
+    }
+    net_sock_set_blocking(tap->shut[0], false);
+    net_sock_set_blocking(tap->shut[1], false);
     net_event_t event = { .data = NULL, };
-    net_poll_add(tap->poll, tap->shut[0], &event);
+    if (!net_poll_add(tap->poll, tap->shut[0], &event)) {
+        net_sock_close(tap->shut[0]); net_sock_close(tap->shut[1]);
+        net_poll_close(tap->poll); free(tap); return NULL;
+    }
 
     hashmap_init(&tap->udp_ports, 16);
     hashmap_init(&tap->icmp_ids, 16);
@@ -1173,7 +1328,7 @@ tap_dev_t* tap_open(void)
 
 void tap_attach(tap_dev_t* tap, const tap_net_dev_t* net_dev)
 {
-    if (tap->net.feed_rx == NULL) {
+    if (tap && tap->net.feed_rx == NULL) {
         tap->net = *net_dev;
         tap->thread = thread_create(tap_thread, tap);
     }
@@ -1228,9 +1383,21 @@ bool tap_portfwd(tap_dev_t* tap, const char* fwd)
 
 void tap_close(tap_dev_t* tap)
 {
+    if (!tap) return;
     // Shut down the TAP thread
-    net_sock_close(tap->shut[1]);
+    atomic_store_uint32(&tap->stopping, 1);
+    net_tcp_send(tap->shut[1], "q", 1);
     thread_join(tap->thread);
+    net_sock_close(tap->shut[1]);
+#ifdef HOST_TARGET_WIN32
+    for (unsigned i = 0; i < TAP_PING_LIMIT; ++i) {
+        if (tap->pings[i]) {
+            /* Requests have a 1s timeout; keep buffers alive until completion. */
+            WaitForSingleObject(tap->pings[i]->event, INFINITE);
+            tap_ping_free(tap->pings[i]);
+        }
+    }
+#endif
 
     // Cleanup
     hashmap_foreach(&tap->tcp_map, hash, ts_val) {

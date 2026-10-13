@@ -658,7 +658,7 @@ ifeq ($(OS),windows)
 # Windows-specific libraries to link to
 # NOTE: Prefer linking to wsock32 on i386 for Win95/NT 3.x compat, this still allows to use WinSock 2.x when available
 override LDFLAGS_USE_WIN32_GUI := $(call check_cc_flags,-lgdi32)
-override LDFLAGS_USE_NET       := $(call check_cc_flags,$(if $(filter i386,$(ARCH)),-lwsock32,-lws2_32) -lws2)
+override LDFLAGS_USE_NET       := $(call check_cc_flags,$(if $(filter i386,$(ARCH)),-lwsock32,-lws2_32) -lws2) -liphlpapi
 endif
 
 ifeq ($(OS),haiku)
