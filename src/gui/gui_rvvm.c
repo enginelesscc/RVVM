@@ -43,7 +43,9 @@ static const uint8_t rvvm_logo_pix[] = {
 static void rvvm_gui_update_title(gui_window_t* win)
 {
     rvvm_window_t* rvvm = win->data;
-    if (rvvm->grab) {
+    if (win->absolute_mouse) {
+        gui_window_set_title(win, "RVVM - Absolute mouse");
+    } else if (rvvm->grab) {
         gui_window_set_title(win, "RVVM - Press Ctrl+Alt+G to release grab");
     } else {
         gui_window_set_title(win, "RVVM - Click to capture; Ctrl+Alt+G to release");
@@ -55,8 +57,8 @@ static void rvvm_gui_grab_input(gui_window_t* win, bool grab)
     rvvm_window_t* rvvm = gui_window_get_data(win);
     if (rvvm->grab != grab && gui_window_grab_input(win, grab)) {
         rvvm->grab = grab;
-        rvvm_gui_update_title(win);
     }
+    rvvm_gui_update_title(win);
 }
 
 static void rvvm_gui_free(gui_window_t* win)
@@ -112,7 +114,7 @@ static void rvvm_gui_on_key_press(gui_window_t* win, hid_key_t key)
 {
     rvvm_window_t* rvvm = gui_window_get_data(win);
     rvvm_gui_handle_modkeys(rvvm, key, true);
-    if (rvvm->ctrl && rvvm->alt) {
+    if (!win->absolute_mouse && rvvm->ctrl && rvvm->alt) {
         switch (key) {
             case HID_KEY_G: {
                 // Grab mouse & keyboard
@@ -136,7 +138,7 @@ static void rvvm_gui_on_key_release(gui_window_t* win, hid_key_t key)
 static void rvvm_gui_on_mouse_press(gui_window_t* win, hid_btns_t btns)
 {
     rvvm_window_t* rvvm = gui_window_get_data(win);
-    if (!rvvm->grab) {
+    if (!win->absolute_mouse && !rvvm->grab) {
         rvvm_gui_grab_input(win, true);
         return; // First click acquires capture without clicking in the guest.
     }
@@ -230,6 +232,7 @@ void gui_rvvm_register(gui_window_t* win, rvvm_machine_t* machine)
     }
     rvvm->keyboard = usb ? hid_keyboard_init_usb(usb) : hid_keyboard_init_auto(machine);
     rvvm->mouse    = usb ? hid_mouse_init_usb(usb) : hid_mouse_init_auto(machine);
+    win->absolute_mouse |= usb != NULL || rvvm_has_arg("absolute-mouse");
 
     gui_window_set_data(win, rvvm);
     gui_window_register(win, &rvvm_gui_cb);

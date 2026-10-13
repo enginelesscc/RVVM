@@ -83,6 +83,9 @@ struct gui_window_t {
     // Window dimensions
     uint32_t width;
     uint32_t height;
+
+    // Absolute mouse input does not need pointer capture
+    bool absolute_mouse;
 };
 
 /*
@@ -174,6 +177,9 @@ static inline bool gui_window_set_title(gui_window_t* win, const char* title)
 
 static inline bool gui_window_grab_input(gui_window_t* win, bool grab)
 {
+    if (grab && win->absolute_mouse) {
+        return false;
+    }
     if (win->bknd_cb->grab_input) {
         win->bknd_cb->grab_input(win, grab);
         return true;

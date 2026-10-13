@@ -43,7 +43,6 @@ typedef struct {
 
     // Input grab flag
     bool grab;
-    bool absolute;
 } win32_window_t;
 
 static ATOM win32_atom = 0;
@@ -239,7 +238,7 @@ static void win32_window_free(gui_window_t* win)
 
 static bool win32_absolute_input(void)
 {
-    return GetSystemMetrics(SM_REMOTESESSION) != 0 || rvvm_has_arg("absolute-mouse");
+    return GetSystemMetrics(SM_REMOTESESSION) != 0 || rvvm_has_arg("absolute-mouse") || rvvm_has_arg("usb-input");
 }
 
 static void win32_window_poll(gui_window_t* win)
@@ -247,10 +246,10 @@ static void win32_window_poll(gui_window_t* win)
     win32_window_t* win32 = gui_backend_get_data(win);
 
     bool absolute = win32_absolute_input();
-    if (win32->absolute != absolute) {
+    if (win->absolute_mouse != absolute) {
         // RDP reconnect/session migration: release keys and stop cursor warping.
+        win->absolute_mouse = absolute;
         gui_backend_on_focus_lost(win);
-        win32->absolute = absolute;
         rvvm_info("Window mouse mode: %s", absolute ? "absolute (RDP/tablet)" : "relative capture");
     }
 
@@ -258,7 +257,7 @@ static void win32_window_poll(gui_window_t* win)
     while (PeekMessage(&Msg, win32->hwnd, 0, 0, PM_REMOVE)) {
         switch (Msg.message) {
             case WM_MOUSEMOVE:
-                if (win32->grab && !win32->absolute) {
+                if (win32->grab && !win->absolute_mouse) {
                     POINTS cur = MAKEPOINTS(Msg.lParam);
                     POINT  mid = {
                         .x = gui_window_width(win) >> 1,
@@ -413,7 +412,7 @@ static void win32_window_grab_input(gui_window_t* win, bool grab)
         SetWindowLongPtr(win32->hwnd, GWLP_USERDATA, (LONG_PTR)win32);
         if (grab) {
             SetCapture(win32->hwnd);
-            if (!win32->absolute) {
+            if (!win->absolute_mouse) {
                 POINT mid = {.x = gui_window_width(win) / 2, .y = gui_window_height(win) / 2};
                 ClientToScreen(win32->hwnd, &mid);
                 SetCursorPos(mid.x, mid.y);
@@ -463,8 +462,8 @@ bool win32_window_init(gui_window_t* win)
     // Register Win32 backend
     win32_window_t* win32 = safe_new_obj(win32_window_t);
 
-    win32->absolute = win32_absolute_input();
-    rvvm_info("Window mouse mode: %s", win32->absolute ? "absolute (RDP/tablet)" : "relative capture");
+    win->absolute_mouse = win32_absolute_input();
+    rvvm_info("Window mouse mode: %s", win->absolute_mouse ? "absolute (RDP/tablet)" : "relative capture");
     gui_backend_register(win, &win32_window_cb);
     gui_backend_set_data(win, win32);
 
