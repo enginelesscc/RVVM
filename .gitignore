@@ -21,6 +21,10 @@
 # Explicitly track source directories
 !/include
 !/src
+!/tools
+/tools/*
+!/tools/guest_control.py
+!/tools/README.md
 
 # Explicitly track build system
 !/Makefile

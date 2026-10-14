@@ -9,6 +9,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #include "gui_window.h"
 #include "utils.h"
+#include "vma_ops.h"
 
 PUSH_OPTIMIZATION_SIZE
 
@@ -17,6 +18,16 @@ PUSH_OPTIMIZATION_SIZE
 static const gui_event_cb_t gui_dummy_event_cb = ZERO_INIT;
 
 static const gui_backend_cb_t gui_dummy_bknd_cb = ZERO_INIT;
+
+static void gui_headless_free(gui_window_t* win)
+{
+    vma_free(gui_backend_get_vram(win), gui_backend_get_vram_size(win));
+    gui_backend_set_vram(win, NULL, 0);
+}
+
+static const gui_backend_cb_t gui_headless_cb = {
+    .free = gui_headless_free,
+};
 
 /*
  * GUI backend
@@ -38,6 +49,17 @@ static void gui_backend_free(gui_window_t* win)
 static bool gui_backend_init(gui_window_t* win)
 {
     const char* gui = rvvm_getarg("gui");
+    if (gui && rvvm_strcmp(gui, "none")) {
+        size_t size = gui_backend_get_vram_size(win);
+        void* vram = vma_alloc(NULL, size, VMA_RDWR);
+        if (!vram) {
+            rvvm_error("Unable to allocate headless framebuffer");
+            return false;
+        }
+        gui_backend_set_vram(win, vram, size);
+        gui_backend_register(win, &gui_headless_cb);
+        return true;
+    }
 #if defined(USE_WIN32_GUI)
     if ((!gui || rvvm_strcmp(gui, "win32")) && win32_window_init(win)) {
         return true;

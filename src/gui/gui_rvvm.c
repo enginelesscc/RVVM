@@ -8,6 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 */
 
 #include "gui_window.h"
+#include "gui_control.h"
 #include <devices/usb-ohci.h>
 
 PUSH_OPTIMIZATION_SIZE
@@ -18,6 +19,7 @@ typedef struct {
     rvvm_machine_t* machine;
     hid_keyboard_t* keyboard;
     hid_mouse_t*    mouse;
+    gui_control_t*  control;
 
     uint32_t width;
     uint32_t height;
@@ -64,7 +66,14 @@ static void rvvm_gui_grab_input(gui_window_t* win, bool grab)
 static void rvvm_gui_free(gui_window_t* win)
 {
     rvvm_window_t* rvvm = gui_window_get_data(win);
+    gui_control_free(rvvm->control);
     safe_free(rvvm);
+}
+
+static void rvvm_gui_poll(gui_window_t* win)
+{
+    rvvm_window_t* rvvm = gui_window_get_data(win);
+    gui_control_poll(rvvm->control);
 }
 
 static void rvvm_gui_on_close(gui_window_t* win)
@@ -210,6 +219,7 @@ static void rvvm_gui_draw_logo(gui_window_t* win)
 
 static gui_event_cb_t rvvm_gui_cb = {
     .free             = rvvm_gui_free,
+    .poll             = rvvm_gui_poll,
     .on_close         = rvvm_gui_on_close,
     .on_focus_lost    = rvvm_gui_on_focus_lost,
     .on_key_press     = rvvm_gui_on_key_press,
@@ -236,6 +246,7 @@ void gui_rvvm_register(gui_window_t* win, rvvm_machine_t* machine)
 
     gui_window_set_data(win, rvvm);
     gui_window_register(win, &rvvm_gui_cb);
+    rvvm->control = gui_control_init(win, rvvm->keyboard, rvvm->mouse);
 
     rvvm_gui_update_title(win);
     rvvm_gui_draw_logo(win);

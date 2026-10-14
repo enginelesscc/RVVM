@@ -195,6 +195,8 @@ static void rvvm_print_help(void)
         "    -nvme       ...  Explicitly attach storage image as NVMe device\n"
         "    -ata        ...  Explicitly attach storage image as ATA (IDE) device\n"
         "    -nogui           Disable display GUI\n"
+        "    -gui none        Keep framebuffer and input without a host window\n"
+        "    -control <port>  Localhost framebuffer/HID control (with a display)\n"
         "    -usb-input       Attach USB keyboard/mouse to display (OHCI)\n"
         "    -absolute-mouse  Use absolute mouse input (automatic in Windows RDP)\n"
         "    -nogpu           Disable GPU\n"
@@ -341,6 +343,11 @@ static int rvvm_cli_main(int argc, char** argv)
 
     if (rvvm_has_arg("jh7110-highmem") && !rvvm_cli_jh7110()) {
         rvvm_error("-jh7110-highmem requires -board starfive-jh7110");
+        return -1;
+    }
+
+    if (rvvm_has_arg("control") && rvvm_has_arg("nogui") && !rvvm_has_arg("res")) {
+        rvvm_error("-control requires a display; use -gui none for headless control");
         return -1;
     }
 
