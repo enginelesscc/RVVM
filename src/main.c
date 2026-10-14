@@ -149,6 +149,7 @@ int __getmainargs(int* argc_p, char*** argv_p, char*** envp_p, int do_wildcard, 
 
 // For fputs()
 #include <stdio.h>
+#include <string.h>
 
 static void print_stderr(const char* str)
 {
