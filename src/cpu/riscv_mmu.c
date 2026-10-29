@@ -43,12 +43,19 @@ bool riscv_init_ram(rvvm_ram_t* mem, rvvm_addr_t base_addr, size_t size)
     uint32_t vma_flags = VMA_RDWR;
     if (!rvvm_has_arg("no_ksm")) vma_flags |= VMA_KSM;
     if (!rvvm_has_arg("no_thp")) vma_flags |= VMA_THP;
-    mem->data = vma_alloc(NULL, size, vma_flags);
-
+    mem->large_page_size = 0;
+    mem->data = NULL;
+    if (rvvm_has_arg("largepages")) {
+        mem->data = vma_alloc_large_ram(size, &mem->large_page_size);
+    }
+    if (!mem->data) mem->data = vma_alloc(NULL, size, vma_flags);
     if (!mem->data) {
         rvvm_error("Memory allocation failure");
         return false;
     }
+
+    rvvm_info("Guest RAM: %" PRIu64 " bytes, backing=%s, explicit-page-size=%" PRIu64,
+              (uint64_t)size, mem->large_page_size ? "large" : "ordinary", (uint64_t)mem->large_page_size);
 
     mem->addr = base_addr;
     mem->size = size;
@@ -62,6 +69,7 @@ void riscv_free_ram(rvvm_ram_t* mem)
     mem->size = 0;
     mem->addr = 0;
     mem->data = NULL;
+    mem->large_page_size = 0;
 }
 
 #ifdef USE_JIT
@@ -76,6 +84,7 @@ void riscv_jit_tlb_flush(rvvm_hart_t* vm)
 
 void riscv_tlb_flush(rvvm_hart_t* vm)
 {
+    if (vm->tlb_stats.enabled) vm->tlb_stats.flush_all++;
     // Any lookup to nonzero page fails as VPN is zero
     memset(vm->tlb, 0, sizeof(vm->tlb));
     // For zero page, place nonzero VPN
@@ -90,6 +99,7 @@ void riscv_tlb_flush(rvvm_hart_t* vm)
 
 void riscv_tlb_flush_page(rvvm_hart_t* vm, rvvm_addr_t addr)
 {
+    if (vm->tlb_stats.enabled) vm->tlb_stats.flush_page++;
     // TLB entry invalidation is done via off-by-1 VPN
     const rvvm_addr_t vpn = (addr >> RISCV_PAGE_SHIFT);
     rvvm_tlb_entry_t* entry = &vm->tlb[vpn & RVVM_TLB_MASK];
@@ -316,6 +326,7 @@ static inline bool riscv_mmu_translate(rvvm_hart_t* vm, rvvm_addr_t vaddr, rvvm_
         access |= RISCV_MMU_EXEC;
     }
     if (priv < RISCV_PRIV_MACHINE) {
+        if (vm->tlb_stats.enabled && vm->mmu_mode != CSR_SATP_MODE_BARE) vm->tlb_stats.walks++;
         switch (vm->mmu_mode) {
             case CSR_SATP_MODE_BARE:
                 *paddr = vaddr;
@@ -514,6 +525,23 @@ cold_path void* riscv_mmu_op_internal(rvvm_hart_t* vm, rvvm_addr_t vaddr, void* 
         }
     }
 
+    int stat_access = -1;
+    if (vm->tlb_stats.enabled) {
+        if (attr & (RISCV_MMU_ATTR_PHYS | RISCV_MMU_ATTR_NO_TRAP | RISCV_MMU_ATTR_NO_PROT)) {
+            vm->tlb_stats.probes++;
+        } else {
+            rvvm_addr_t vpn = vaddr >> RISCV_PAGE_SHIFT;
+            const rvvm_tlb_entry_t* entry = &vm->tlb[vpn & RVVM_TLB_MASK];
+            rvvm_addr_t tag = access == RISCV_MMU_READ ? entry->r : access == RISCV_MMU_WRITE ? entry->w : entry->e;
+            if (tag != vpn) {
+                stat_access = access == RISCV_MMU_READ ? 0 : access == RISCV_MMU_WRITE ? 1 : 2;
+                vm->tlb_stats.misses[stat_access]++;
+            } else {
+                vm->tlb_stats.slow_hits++;
+            }
+        }
+    }
+
     if (unlikely(attr & RISCV_MMU_ATTR_NO_PROT)) {
         mmu_access = RISCV_MMU_DEBUG_ACCESS;
     }
@@ -527,6 +555,7 @@ cold_path void* riscv_mmu_op_internal(rvvm_hart_t* vm, rvvm_addr_t vaddr, void* 
 
         void* ptr = riscv_phys_access(vm, paddr);
         if (likely(ptr)) {
+            if (stat_access >= 0) vm->tlb_stats.ram[stat_access]++;
             // Physical address in main memory, cache address translation
             riscv_tlb_put(vm, vaddr, ptr, access);
             if (likely(!(attr & RISCV_MMU_ATTR_PTR))) {
@@ -548,11 +577,13 @@ cold_path void* riscv_mmu_op_internal(rvvm_hart_t* vm, rvvm_addr_t vaddr, void* 
             // Attempt to access MMIO
             uint8_t mmio_access = (attr & RISCV_MMU_ATTR_PTR) ? RISCV_MMU_READ : access;
             if (riscv_mmio_scan(vm, vaddr, paddr, data, size, mmio_access)) {
+                if (stat_access >= 0) vm->tlb_stats.mmio++;
                 return data;
             }
         }
 
         if (!(paddr & ~SV64_PHYS_MASK)) {
+            if (stat_access >= 0) vm->tlb_stats.unmapped++;
             // Ignore writes and read zeroes on unmapped 56-bit physical addresses
             // Experimentally confirmed this actually happens on real hardware (VF2)
             if (data) {
@@ -562,8 +593,10 @@ cold_path void* riscv_mmu_op_internal(rvvm_hart_t* vm, rvvm_addr_t vaddr, void* 
         }
 
         // Physical memory access fault (Physical address outside canonic 56-bit space)
+        if (stat_access >= 0) vm->tlb_stats.faults++;
         riscv_mmu_phys_fault(vm, vaddr, attr);
     } else {
+        if (stat_access >= 0) vm->tlb_stats.faults++;
         // Pagefault (No translation for virtual address or protection fault)
         riscv_mmu_pagefault(vm, vaddr, attr);
     }

@@ -27,6 +27,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #include <cpu/riscv_cpu.h>
 #include <cpu/riscv_hart.h>
+#include <cpu/riscv_pmu.h>
 #include <cpu/riscv_mmu.h>
 
 PUSH_OPTIMIZATION_SIZE
@@ -113,9 +114,9 @@ void rvvm_append_isa_string(rvvm_machine_t* machine, const char* str)
 #if defined(USE_FDT)
 
 static const char* riscv_exts
-    = "c_zic64b_zicbom_zicbop_zicboz_ziccamoa_ziccif_zicclsm_ziccrse_zicntr_zicond_zicsr_zifencei_zihintntl_"
+    = "c_zic64b_zicbom_zicbop_zicboz_ziccamoa_ziccif_zicclsm_ziccrse_zicntr_zihpm_zicond_zicsr_zifencei_zihintntl_"
       "zihintpause_zimop_zmmul_za64rs_zaamo_zabha_zacas_zalrsc_zawrs_zfa_zca_zcb_zcd_zcmop_zba_zbb_zbc_zbkb_zbkx_zbs_"
-      "zkr_smcsrind_ssccptr_sscounterenw_sscsrind_sstc_sstvala_sstvecd_ssstrict_ssu64xl_svpbmt_svvptc_svadu_svbare";
+      "zkr_smcsrind_sscofpmf_ssccptr_sscounterenw_sscsrind_sstc_sstvala_sstvecd_ssstrict_ssu64xl_svpbmt_svvptc_svadu_svbare";
 
 static char* rvvm_merge_strings_internal(const char* str1, const char* str2)
 {
@@ -151,6 +152,16 @@ static void rvvm_init_fdt(rvvm_machine_t* machine)
     fdt_node_add_prop_str(memory, "device_type", "memory");
     fdt_node_add_prop_reg(memory, "reg", machine->mem.addr, machine->mem.size);
     fdt_node_add_child(machine->fdt, memory);
+
+    struct fdt_node* pmu = fdt_node_create("pmu");
+    uint8_t pmu_map[36];
+    const uint32_t pmu_cells[] = {1, 1, 0x79, 2, 2, 0x7c, 5, 5, 0x78};
+    for (size_t i = 0; i < 9; ++i) {
+        write_uint32_be_m(pmu_map + i * 4, pmu_cells[i]);
+    }
+    fdt_node_add_prop_str(pmu, "compatible", "riscv,pmu");
+    fdt_node_add_prop(pmu, "riscv,event-to-mhpmcounters", pmu_map, sizeof(pmu_map));
+    fdt_node_add_child(machine->fdt, pmu);
 
     // FDT /cpus node
     struct fdt_node* cpus = fdt_node_create("cpus");
@@ -307,6 +318,7 @@ static void rvvm_reset_machine_state(rvvm_machine_t* machine)
         vm->csr.cause[RISCV_PRIV_MACHINE] = 0;
         // Invalidate reservation
         vm->lrsc = false;
+        riscv_pmu_init(vm);
         // Pass hartid in register a0 & hartid CSR
         vm->csr.hartid               = i;
         vm->registers[RISCV_REG_X10] = i;
@@ -808,7 +820,10 @@ PUBLIC bool rvvm_machine_powered(rvvm_machine_t* machine)
 
 static void rvvm_snapshot_hart(rvvm_snapshot_t* snap, rvvm_hart_t* vm)
 {
-    rvvm_snapshot_section(snap, "riscv-hart");
+    if (rvvm_snapshot_writing(snap)) {
+        riscv_pmu_update(vm);
+    }
+    rvvm_snapshot_section(snap, "riscv-hart-pmu1");
     for (size_t i = 0; i < RISCV_REGS_MAX; ++i) {
         rvvm_snapshot_field(snap, vm->registers[i]);
     }
@@ -850,6 +865,16 @@ static void rvvm_snapshot_hart(rvvm_snapshot_t* snap, rvvm_hart_t* vm)
     rvvm_snapshot_field(snap, vm->csr.vcsr);
     rvvm_snapshot_field(snap, vm->csr.vtype);
     rvvm_snapshot_field(snap, vm->csr.hartid);
+    for (size_t i = 0; i < RISCV_PMU_COUNTERS; ++i) {
+        rvvm_snapshot_field(snap, vm->pmu.counter[i]);
+        rvvm_snapshot_field(snap, vm->pmu.event[i]);
+    }
+    rvvm_snapshot_field(snap, vm->pmu.inhibit);
+    if (!rvvm_snapshot_writing(snap)) {
+        vm->pmu.clock = rvtimer_clocksource(RISCV_PMU_CYCLE_HZ);
+        vm->pmu_retired = vm->pmu_branches = 0;
+        riscv_pmu_reconfigure(vm);
+    }
 
     // AIA register files are allocated in pairs for M/S modes
     uint8_t aia = !!vm->aia;

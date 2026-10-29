@@ -12,6 +12,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Provides entry point to riscv_emulate_insn()
 #include "riscv_compressed.h"
+#include "riscv_pmu.h"
 
 #if defined(RISCV64)
 #define riscv_run_interpreter func_opt_hot riscv64_run_interpreter
@@ -72,7 +73,14 @@ TSAN_SUPPRESS void riscv_run_interpreter(rvvm_hart_t* vm)
         // Implicitly zero x0 register each time
         vm->registers[RISCV_REG_ZERO] = 0;
 
+        uint8_t priv = vm->priv_mode;
+        uint32_t inhibit = vm->pmu.inhibit;
+        vm->pmu.jit_executed = false;
+        vm->pmu.wrote_instret = false;
         riscv_emulate_insn(vm, insn);
+        if (!vm->trap && !vm->pmu.jit_executed) {
+            riscv_pmu_retire(vm, priv, inhibit, insn);
+        }
     } while (likely(vm->running));
 }
 

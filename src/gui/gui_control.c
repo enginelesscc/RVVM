@@ -26,6 +26,7 @@ struct gui_control {
     uint64_t activity;
     bool keys[256];
     uint8_t buttons;
+    bool closing;
 };
 
 static void gui_control_release(gui_control_t* control)
@@ -47,6 +48,7 @@ static void gui_control_disconnect(gui_control_t* control)
     control->client = NULL;
     safe_free(control->response);
     control->received = control->length = control->sent = 0;
+    control->closing = false;
 }
 
 static void gui_control_reply(gui_control_t* control, const char* message)
@@ -109,6 +111,9 @@ static void gui_control_command(gui_control_t* control)
         hid_mouse_scroll(control->mouse, wheel);
     } else if (rvvm_strcmp(control->request, "release")) {
         gui_control_release(control);
+    } else if (rvvm_strcmp(control->request, "close")) {
+        gui_control_release(control);
+        control->closing = true;
     } else {
         gui_control_reply(control, "ERROR invalid command\n");
         return;
@@ -174,6 +179,10 @@ void gui_control_poll(gui_control_t* control)
             if (control->sent == control->length) {
                 safe_free(control->response);
                 control->length = control->sent = 0;
+                if (control->closing) {
+                    control->closing = false;
+                    gui_backend_on_close(control->win);
+                }
             }
         } else if (count != NET_ERR_BLOCK) {
             gui_control_disconnect(control);

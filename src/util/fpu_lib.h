@@ -251,6 +251,7 @@ void     fpu_clear_exceptions(uint32_t clr_exceptions);
 // Rounding mode handling
 uint32_t fpu_get_rounding_mode(void);
 void     fpu_set_rounding_mode(uint32_t mode);
+uint32_t fpu_swap_rounding_mode(uint32_t mode);
 
 // Floating-point Classification
 slow_path uint32_t fpu_fclass32(fpu_f32_t f);

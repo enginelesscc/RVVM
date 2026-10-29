@@ -335,6 +335,11 @@ void fpu_set_rounding_mode(uint32_t mode)
     fpu_pump_rounding_mode_internal(mode);
 }
 
+uint32_t fpu_swap_rounding_mode(uint32_t mode)
+{
+    return fpu_pump_rounding_mode_internal(mode);
+}
+
 slow_path void fpu_raise_invalid(void)
 {
     fpu_raise_exceptions(FPU_LIB_FLAG_NV);

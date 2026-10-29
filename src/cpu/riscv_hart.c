@@ -22,6 +22,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include <cpu/riscv_csr.h>
 #include <cpu/riscv_hart.h>
 #include <cpu/riscv_mmu.h>
+#include <cpu/riscv_pmu.h>
 
 // Valid vm->pending_events bits deliverable to the hart
 #define HART_EVENT_PAUSE   0x1 // Pause the hart in a consistent state
@@ -35,8 +36,10 @@ rvvm_hart_t* riscv_hart_init(rvvm_machine_t* machine)
     vm->mem         = machine->mem;
     vm->rv64        = machine->rv64;
     vm->priv_mode   = RISCV_PRIV_MACHINE;
+    vm->tlb_stats.enabled = rvvm_has_arg("tlb_stats");
 
     riscv_csr_init(vm);
+    riscv_pmu_init(vm);
 
     rvtimecmp_init(&vm->mtimecmp, &vm->machine->timer);
     rvtimecmp_init(&vm->stimecmp, &vm->machine->timer);
@@ -75,6 +78,19 @@ void riscv_hart_aia_init(rvvm_hart_t* vm)
 
 void riscv_hart_free(rvvm_hart_t* vm)
 {
+    if (vm->tlb_stats.enabled) {
+        rvvm_info("TLB hart=%u miss-r=%" PRIu64 " miss-w=%" PRIu64 " miss-x=%" PRIu64 " ram-r=%" PRIu64 " ram-w=%" PRIu64 " ram-x=%" PRIu64 " "
+                  "mmio=%" PRIu64 " unmapped=%" PRIu64 " faults=%" PRIu64 " slow-hit=%" PRIu64 " probes=%" PRIu64 " walks=%" PRIu64 " flush-all=%" PRIu64 " flush-page=%" PRIu64 "",
+                  vm->csr.hartid,
+                  (uint64_t)vm->tlb_stats.misses[0], (uint64_t)vm->tlb_stats.misses[1],
+                  (uint64_t)vm->tlb_stats.misses[2], (uint64_t)vm->tlb_stats.ram[0],
+                  (uint64_t)vm->tlb_stats.ram[1], (uint64_t)vm->tlb_stats.ram[2],
+                  (uint64_t)vm->tlb_stats.mmio, (uint64_t)vm->tlb_stats.unmapped,
+                  (uint64_t)vm->tlb_stats.faults,
+                  (uint64_t)vm->tlb_stats.slow_hits, (uint64_t)vm->tlb_stats.probes,
+                  (uint64_t)vm->tlb_stats.walks, (uint64_t)vm->tlb_stats.flush_all,
+                  (uint64_t)vm->tlb_stats.flush_page);
+    }
 #ifdef USE_JIT
     if (vm->jit_enabled) {
         rvjit_ctx_free(&vm->jit);
@@ -100,6 +116,7 @@ rvvm_addr_t riscv_hart_run_userland(rvvm_hart_t* vm)
 void riscv_switch_priv(rvvm_hart_t* vm, uint8_t priv_mode)
 {
     if (vm->priv_mode != priv_mode) {
+        riscv_pmu_update(vm);
         vm->priv_mode = priv_mode;
         riscv_update_xlen(vm);
         riscv_tlb_flush(vm);
@@ -394,7 +411,8 @@ static void riscv_handle_irqs(rvvm_hart_t* vm)
         // Discard compiled JIT block torn by interrupt
         riscv_jit_discard(vm);
 
-        uint32_t irq = bit_clz32(irqs) ^ 31;
+        uint32_t priority = irqs & ~(1U << RISCV_INTERRUPT_COUNTER_OVF);
+        uint32_t irq = bit_clz32(priority ? priority : irqs) ^ 31;
         // Modify exception stack in csr.status
         riscv_trap_priv_helper(vm, priv);
         // Switch privilege
@@ -424,6 +442,8 @@ void riscv_hart_run(rvvm_hart_t* vm)
     do {
         // Allow hart to run
         atomic_store_uint32_ex(&vm->running, true, ATOMIC_RELAXED);
+
+        riscv_pmu_update(vm);
 
         // Handle events
         uint32_t events = atomic_swap_uint32(&vm->pending_events, 0);

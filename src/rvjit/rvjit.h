@@ -159,6 +159,8 @@ typedef struct {
     rvjit_addr_t virt_pc;
     rvjit_addr_t phys_pc;
     int32_t      pc_off;
+    uint32_t     retired;
+    uint32_t     branches;
 
     bool    rv64;
     bool    native_ptrs;

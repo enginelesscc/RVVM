@@ -45,6 +45,10 @@ bool vma_broadcast_membarrier(void);
 // Allocate anonymous VMA, force needed address using VMA_FIXED
 void* vma_alloc(void* addr, size_t size, uint32_t flags);
 
+// Try Windows nonpageable large-page RAM. No rounding, fallback, or persistent policy changes.
+// On success, page_size receives the actual large-page size. Free with vma_free().
+void* vma_alloc_large_ram(size_t size, size_t* page_size);
+
 // Map file into memory, acts like vma_alloc() when file == NULL
 void* vma_mmap(void* addr, size_t size, uint32_t flags, rvfile_t* file, uint64_t offset);
 

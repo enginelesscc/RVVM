@@ -11,6 +11,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "riscv_csr.h"
 #include "riscv_hart.h"
 #include "riscv_mmu.h"
+#include "riscv_pmu.h"
 
 PUSH_OPTIMIZATION_SIZE
 
@@ -163,22 +164,6 @@ static inline bool riscv_csr_zero_h(rvvm_hart_t* vm, rvvm_uxlen_t* dest)
     return false;
 }
 
-static inline bool riscv_csr_counter(rvvm_hart_t* vm, rvvm_uxlen_t* dest, uint32_t counter)
-{
-    if (riscv_csr_counter_enabled(vm, counter)) {
-        return riscv_csr_const(dest, rvtimer_get(&vm->machine->timer));
-    }
-    return false;
-}
-
-static inline bool riscv_csr_counter_h(rvvm_hart_t* vm, rvvm_uxlen_t* dest, uint32_t counter)
-{
-    if (!vm->rv64 && riscv_csr_counter_enabled(vm, counter)) {
-        return riscv_csr_const(dest, rvtimer_get(&vm->machine->timer) >> 32);
-    }
-    return false;
-}
-
 static inline bool riscv_csr_seed(rvvm_hart_t* vm, rvvm_uxlen_t* dest, uint8_t op)
 {
     // Zkr: SEED must be accessed via CSR read-write instruction form
@@ -314,7 +299,8 @@ static inline bool riscv_csr_topi(rvvm_hart_t* vm, rvvm_uxlen_t* dest, rvvm_uxle
 {
     if (vm->aia) {
         uint32_t pending = (riscv_interrupts_pending(vm) & mask);
-        uint32_t irq     = pending ? (bit_clz32(pending) ^ 31) : 0;
+        uint32_t priority = pending & ~(1U << RISCV_INTERRUPT_COUNTER_OVF);
+        uint32_t irq = pending ? (bit_clz32(priority ? priority : pending) ^ 31) : 0;
         // Report IRQ as both pending and highest prio
         *dest = (!!irq) | (irq << 16);
         UNUSED(op);
@@ -583,15 +569,11 @@ static forceinline bool riscv_csr_op_internal(rvvm_hart_t* vm, uint32_t csr_id, 
         case CSR_SEED:
             return riscv_csr_seed(vm, dest, op);
 
-        // User Counters / Timers
-        case CSR_CYCLE:
         case CSR_TIME:
-        case CSR_INSTRET:
-            return riscv_csr_counter(vm, dest, csr_id - CSR_CYCLE);
-        case CSR_CYCLEH:
         case CSR_TIMEH:
-        case CSR_INSTRETH:
-            return riscv_csr_counter_h(vm, dest, csr_id - CSR_CYCLEH);
+            if ((csr_id == CSR_TIMEH && vm->rv64) || !riscv_csr_counter_enabled(vm, 1))
+                return false;
+            return riscv_csr_const(dest, rvtimer_get(&vm->machine->timer) >> (csr_id == CSR_TIMEH ? 32 : 0));
 
         // Supervisor Trap Setup
         case CSR_SSTATUS:
@@ -730,76 +712,6 @@ static forceinline bool riscv_csr_op_internal(rvvm_hart_t* vm, uint32_t csr_id, 
         case 0x3BF: // pmpaddr15
             return riscv_csr_zero(dest);
 
-        // Machine Counters/Timers
-        case CSR_MCYCLE:
-        case CSR_MINSTRET:
-        case 0xB03: // mhpmcounter3
-        case 0xB04: // mhpmcounter4
-        case 0xB05: // mhpmcounter5
-        case 0xB06: // mhpmcounter6
-        case 0xB07: // mhpmcounter7
-        case 0xB08: // mhpmcounter8
-        case 0xB09: // mhpmcounter9
-        case 0xB0A: // mhpmcounter10
-        case 0xB0B: // mhpmcounter11
-        case 0xB0C: // mhpmcounter12
-        case 0xB0D: // mhpmcounter13
-        case 0xB0E: // mhpmcounter14
-        case 0xB0F: // mhpmcounter15
-        case 0xB10: // mhpmcounter16
-        case 0xB11: // mhpmcounter17
-        case 0xB12: // mhpmcounter18
-        case 0xB13: // mhpmcounter19
-        case 0xB14: // mhpmcounter20
-        case 0xB15: // mhpmcounter21
-        case 0xB16: // mhpmcounter22
-        case 0xB17: // mhpmcounter23
-        case 0xB18: // mhpmcounter24
-        case 0xB19: // mhpmcounter25
-        case 0xB1A: // mhpmcounter26
-        case 0xB1B: // mhpmcounter27
-        case 0xB1C: // mhpmcounter28
-        case 0xB1D: // mhpmcounter29
-        case 0xB1E: // mhpmcounter30
-        case 0xB1F: // mhpmcounter31
-            return riscv_csr_zero(dest);
-        case CSR_MCYCLEH:
-        case CSR_MINSTRETH:
-        case 0xB83: // mhpmcounter3h
-        case 0xB84: // mhpmcounter4h
-        case 0xB85: // mhpmcounter5h
-        case 0xB86: // mhpmcounter6h
-        case 0xB87: // mhpmcounter7h
-        case 0xB88: // mhpmcounter8h
-        case 0xB89: // mhpmcounter9h
-        case 0xB8A: // mhpmcounter10h
-        case 0xB8B: // mhpmcounter11h
-        case 0xB8C: // mhpmcounter12h
-        case 0xB8D: // mhpmcounter13h
-        case 0xB8E: // mhpmcounter14h
-        case 0xB8F: // mhpmcounter15h
-        case 0xB90: // mhpmcounter16h
-        case 0xB91: // mhpmcounter17h
-        case 0xB92: // mhpmcounter18h
-        case 0xB93: // mhpmcounter19h
-        case 0xB94: // mhpmcounter20h
-        case 0xB95: // mhpmcounter21h
-        case 0xB96: // mhpmcounter22h
-        case 0xB97: // mhpmcounter23h
-        case 0xB98: // mhpmcounter24h
-        case 0xB99: // mhpmcounter25h
-        case 0xB9A: // mhpmcounter26h
-        case 0xB9B: // mhpmcounter27h
-        case 0xB9C: // mhpmcounter28h
-        case 0xB9D: // mhpmcounter29h
-        case 0xB9E: // mhpmcounter30h
-        case 0xB9F: // mhpmcounter31h
-            return riscv_csr_zero_h(vm, dest);
-
-        // Machine Counter Setup
-        case CSR_MCOUNTINHIBIT:
-            return riscv_csr_zero(dest);
-
         // Machine Indirect CSR Access (Sscsrind)
         case CSR_MISELECT:
             return riscv_csr_helper(vm, &vm->csr.iselect[RISCV_PRIV_MACHINE], dest, op);
@@ -824,7 +736,15 @@ bool riscv_csr_op(rvvm_hart_t* vm, uint32_t csr_id, rvvm_uxlen_t* dest, uint8_t 
         return false;
     }
 
-    bool ret = riscv_csr_op_internal(vm, csr_id, dest, op, is_write);
+    bool pmu = (csr_id >= 0xb00 && csr_id <= 0xb1f && csr_id != 0xb01)
+            || (csr_id >= 0xb80 && csr_id <= 0xb9f && csr_id != 0xb81)
+            || (csr_id >= 0xc00 && csr_id <= 0xc1f && csr_id != CSR_TIME)
+            || (csr_id >= 0xc80 && csr_id <= 0xc9f && csr_id != CSR_TIMEH)
+            || (csr_id >= 0x323 && csr_id <= 0x33f)
+            || (csr_id >= 0x723 && csr_id <= 0x73f)
+            || csr_id == CSR_MCOUNTINHIBIT || csr_id == CSR_SCOUNTOVF;
+    bool ret = pmu ? riscv_pmu_csr(vm, csr_id, dest, op, is_write)
+                   : riscv_csr_op_internal(vm, csr_id, dest, op, is_write);
     if (!vm->rv64) {
         // Sign-extend the result into the register
         *dest = (int32_t)*dest;

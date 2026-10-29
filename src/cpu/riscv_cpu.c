@@ -9,6 +9,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #include "riscv_cpu.h"
 #include "riscv_hart.h"
+#include "riscv_pmu.h"
 
 void riscv_run_till_event(rvvm_hart_t* vm)
 {
@@ -74,6 +75,12 @@ static bool riscv_jit_lookup(rvvm_hart_t* vm)
         if (block) {
             riscv_jit_tlb_put(vm, virt_pc, block);
             block(vm);
+            vm->pmu.jit_executed = true;
+            // Active HPM events require timely overflow checks. Otherwise the
+            // JIT budget bounds deferred accounting between CSR/privilege changes.
+            if (vm->pmu_budget == 1 || vm->pmu_retired >= vm->pmu_budget) {
+                riscv_pmu_update(vm);
+            }
             return true;
         }
 
@@ -101,6 +108,10 @@ static forceinline bool riscv_jtlb_lookup(rvvm_hart_t* vm)
     rvvm_addr_t tpc = vm->jtlb[entry].pc;
     if (likely(pc == tpc)) {
         vm->jtlb[entry].block(vm);
+        vm->pmu.jit_executed = true;
+        if (vm->pmu_budget == 1 || vm->pmu_retired >= vm->pmu_budget) {
+            riscv_pmu_update(vm);
+        }
         return true;
     } else {
         return false;

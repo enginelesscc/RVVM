@@ -29,6 +29,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
             return;                                                                                                    \
         }                                                                                                              \
         if (unlikely(vm->jit_compiling)) {                                                                             \
+            vm->jit.retired++;                                                                                        \
             intrinsic;                                                                                                 \
             vm->jit.pc_off     += insn_size;                                                                           \
             vm->jit_block_ends  = false;                                                                               \
@@ -54,6 +55,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
         vm->jit_skip_exec = false;                                                                                     \
         if (unlikely(vm->jit_compiling)) {                                                                             \
             intrinsic;                                                                                                 \
+            vm->jit.retired++;                                                                                        \
             vm->jit.pc_off     += insn_size;                                                                           \
             vm->jit_block_ends  = false;                                                                               \
         }                                                                                                              \
@@ -68,6 +70,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
             return;                                                                                                    \
         }                                                                                                              \
         if (unlikely(vm->jit_compiling)) {                                                                             \
+            vm->jit.retired++;                                                                                        \
             intrinsic;                                                                                                 \
             vm->jit.pc_off     += offset;                                                                              \
             vm->jit_block_ends  = vm->jit.size > UNROLL_MAX_BLOCK_SIZE;                                                \
@@ -78,6 +81,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #define RVVM_RVJIT_TRACE_JALR(intrinsic)                                                                               \
     do {                                                                                                               \
         if (unlikely(vm->jit_compiling)) {                                                                             \
+            vm->jit.retired++;                                                                                        \
             intrinsic;                                                                                                 \
         }                                                                                                              \
     } while (0)
@@ -91,6 +95,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
         }                                                                                                              \
         if (unlikely(vm->jit_compiling)) {                                                                             \
             vm->jit.pc_off += falthrough_off;                                                                          \
+            vm->jit.retired++;                                                                                        \
+            vm->jit.branches++;                                                                                       \
             intrinsic;                                                                                                 \
             vm->jit.pc_off     += (target_off - falthrough_off);                                                       \
             vm->jit_block_ends  = vm->jit.size > UNROLL_MAX_BLOCK_SIZE;                                                \

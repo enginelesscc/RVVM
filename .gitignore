@@ -24,7 +24,11 @@
 !/tools
 /tools/*
 !/tools/guest_control.py
+!/tools/boot_bench.py
 !/tools/README.md
+!/tools/build-pgo.ps1
+!/tools/benchmark-pgo.ps1
+!/tools/libernt-workload.py
 
 # Explicitly track build system
 !/Makefile
@@ -42,3 +46,17 @@
 !/.mailmap
 !/.gitignore
 !/.clang-format
+
+!/tests
+/tests/*
+!/tests/fpu-rounding.c
+!/tests/pmu.c
+!/tests/pmu-sbi.c
+!/tests/pmu-sbi.S
+!/tests/pmu-sbi.ld
+!/tests/libernt-pmu.c
+!/tests/README-pmu.md
+!/tests/run-pmu-sbi.py
+!/tests/tlb-bench.c
+!/tests/run-tlb-bench.py
+!/tests/README-tlb.md

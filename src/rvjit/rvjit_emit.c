@@ -460,6 +460,29 @@ void rvjit_emit_end(rvjit_block_t* block, uint8_t linkage)
 
     block->hreg_mask = rvjit_native_default_hregmask();
     rvjit_update_vm_pc(block);
+    if (block->branches) {
+        regid_t branches = rvjit_claim_hreg(block);
+        rvjit32_native_lw(block, branches, VM_PTR_REG, offsetof(rvvm_hart_t, pmu_branches));
+        rvjit32_native_addi(block, branches, branches, block->branches);
+        rvjit32_native_sw(block, branches, VM_PTR_REG, offsetof(rvvm_hart_t, pmu_branches));
+        rvjit_free_hreg(block, branches);
+    }
+    regid_t count = rvjit_claim_hreg(block);
+    regid_t limit = rvjit_claim_hreg(block);
+    rvjit32_native_lw(block, count, VM_PTR_REG, offsetof(rvvm_hart_t, pmu_retired));
+    rvjit32_native_addi(block, count, count, block->retired);
+    rvjit32_native_sw(block, count, VM_PTR_REG, offsetof(rvvm_hart_t, pmu_retired));
+    rvjit32_native_lw(block, limit, VM_PTR_REG, offsetof(rvvm_hart_t, pmu_budget));
+    branch_t pmu_continue = rvjit32_native_bltu(block, count, limit, BRANCH_NEW, BRANCH_ENTRY);
+    rvjit_free_hreg(block, limit);
+    rvjit_free_hreg(block, count);
+    for (regid_t i = RVJIT_REGISTERS; i > 0; --i) {
+        if (block->abireclaim_mask & rvjit_hreg_mask(i - 1)) {
+            rvjit_native_pop(block, i - 1);
+        }
+    }
+    rvjit_native_ret(block);
+    rvjit32_native_bltu(block, count, limit, pmu_continue, BRANCH_TARGET);
 
     // Recover clobbered registers
     for (regid_t i = RVJIT_REGISTERS; i > 0; --i) {

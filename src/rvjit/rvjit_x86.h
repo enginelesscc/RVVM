@@ -760,12 +760,7 @@ static inline branch_t rvjit_native_jmp(rvjit_block_t* block, branch_t handle, b
     }
 }
 
-/*
- * Forward branches are dynamically resized,
- * however this may introduce problems with cross-branching code.
- * RVVM currently generates linear code with no branch intersections,
- * so this isn't a concern, but might be revised.
- */
+/* Fixed-size forward branches keep nested exits and block links in place. */
 
 #define X86_JB   0x72
 #define X86_JNB  0x73
@@ -788,11 +783,11 @@ static inline branch_t rvjit_x86_branch_entry(rvjit_block_t* block, uint8_t opco
 {
     uint8_t code[6] = {0};
     if (handle == BRANCH_NEW) {
-        // Forward branch, migh relocate code after it
         branch_t tmp = block->size;
-        code[0] = opcode;
-        code[1] = 0xFE;
-        rvjit_put_code(block, code, 2);
+        code[0] = X86_FAR_BRANCH;
+        code[1] = opcode + X86_FAR_BRANCH_MASK;
+        write_uint32_le_m(code + 2, -6);
+        rvjit_put_code(block, code, 6);
         return tmp;
     } else {
         // Backward branch, no need for relocations
@@ -817,19 +812,7 @@ static inline branch_t rvjit_x86_branch_target(rvjit_block_t* block, branch_t ha
     if (handle == BRANCH_NEW) {
         return block->size;
     } else {
-        int32_t offset = block->size - handle - 2;
-        // Patch jump offset
-        if (x86_is_byte_imm(offset)) {
-            // Offset fits into 1 byte
-            block->code[handle + 1] = offset;
-        } else {
-            // Far branch required, reserve space & relocate the code
-            rvjit_put_code(block, "\xCC\xCC\xCC\xCC", 4);
-            memmove(block->code + handle + 6, block->code + handle + 2, offset);
-            block->code[handle + 1] = block->code[handle] + X86_FAR_BRANCH_MASK;
-            block->code[handle] = X86_FAR_BRANCH;
-            write_uint32_le_m(block->code + handle + 2, offset);
-        }
+        write_uint32_le_m(block->code + handle + 2, block->size - handle - 6);
         return BRANCH_NEW;
     }
 }

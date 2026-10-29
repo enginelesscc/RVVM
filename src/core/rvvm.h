@@ -171,6 +171,7 @@ typedef struct randomize_layout {
     rvvm_addr_t addr; // Physical memory base address (Should be page-aligned)
     size_t      size; // Physical memory amount (Should be page-aligned)
     void*       data; // Pointer to memory data (Preferably page-aligned)
+    size_t      large_page_size; // Zero unless explicit host large-page allocation succeeded
 } rvvm_ram_t;
 
 /*
@@ -194,6 +195,9 @@ typedef struct randomize_layout {
 
 struct align_cacheline rvvm_hart_t {
     uint32_t running;
+    uint32_t pmu_retired;
+    uint32_t pmu_branches;
+    uint32_t pmu_budget;
 
     rvvm_uxlen_t registers[RISCV_REGS_MAX];
 
@@ -229,6 +233,30 @@ struct align_cacheline rvvm_hart_t {
     rvvm_addr_t trap_pc;
 
     bool userland;
+
+    // Host diagnostics only: not guest PMU state, not serialized in snapshots.
+    struct {
+        bool enabled;
+        uint64_t misses[3]; // Read, write, execute tag misses serviced by the MMU slow path
+        uint64_t ram[3];
+        uint64_t mmio;
+        uint64_t unmapped;
+        uint64_t faults;
+        uint64_t slow_hits; // Alignment/other slow accesses whose tag was already present
+        uint64_t probes; // Explicit physical/debug translations, excluded from misses
+        uint64_t walks; // All paged slow-path translations, including probes
+        uint64_t flush_all;
+        uint64_t flush_page;
+    } tlb_stats;
+
+    struct {
+        uint64_t counter[7];
+        uint64_t event[7];
+        uint64_t clock;
+        uint32_t inhibit;
+        bool wrote_instret;
+        bool jit_executed;
+    } pmu;
 
     bool         lrsc;
     rvvm_uxlen_t lrsc_addr;

@@ -214,6 +214,8 @@ static void rvvm_print_help(void)
         "\n"
         "    -noisolation     Disable seccomp/pledge isolation\n"
         "    -nojit           Disable RVJIT (For debug purposes, slow!)\n"
+        "    -largepages      Try Windows large-page guest RAM, fall back on failure\n"
+        "    -tlb_stats       Report serviced software TLB misses at exit (use -v)\n"
         "\n";
     print_stderr(help);
 }

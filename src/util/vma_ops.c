@@ -13,6 +13,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "blk_io.h"
 #include "compiler.h"
 #include "mem_ops.h"
+#include "rvvm_types.h"
+#include "spinlock.h"
 #include "utils.h"
 #include "vma_ops.h"
 
@@ -32,6 +34,9 @@ PUSH_OPTIMIZATION_SIZE
 
 #ifndef FILE_MAP_EXECUTE
 #define FILE_MAP_EXECUTE 0x20
+#endif
+#ifndef MEM_LARGE_PAGES
+#define MEM_LARGE_PAGES 0x20000000UL
 #endif
 
 static inline DWORD vma_native_prot(uint32_t flags)
@@ -483,6 +488,68 @@ static void* vma_mmap_aligned(void* addr, size_t size, uint32_t flags, rvfile_t*
 void* vma_alloc(void* addr, size_t size, uint32_t flags)
 {
     return vma_mmap(addr, size, flags, NULL, 0);
+}
+
+void* vma_alloc_large_ram(size_t size, size_t* page_size)
+{
+    *page_size = 0;
+#if defined(VMA_WIN32_IMPL) && defined(HOST_TARGET_WINNT)
+    // Resolve optional APIs to preserve startup compatibility with older Windows.
+    typedef SIZE_T (WINAPI *large_min_t)(void);
+    typedef BOOL (WINAPI *open_token_t)(HANDLE, DWORD, PHANDLE);
+    typedef BOOL (WINAPI *lookup_priv_t)(LPCWSTR, LPCWSTR, PLUID);
+    typedef BOOL (WINAPI *adjust_priv_t)(HANDLE, BOOL, PTOKEN_PRIVILEGES, DWORD, PTOKEN_PRIVILEGES, PDWORD);
+    large_min_t large_min = (large_min_t)(void*)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetLargePageMinimum");
+    size_t minimum = large_min ? large_min() : 0;
+    if (!minimum || !size || size % minimum) {
+        rvvm_warn("Large-page RAM unavailable: size must be a nonzero multiple of %" PRIu64 " bytes", (uint64_t)minimum);
+        return NULL;
+    }
+    // Serialize our temporary changes to the process token across machine creations.
+    static spinlock_t large_ram_lock = ZERO_INIT;
+    spin_lock_slow(&large_ram_lock);
+    HMODULE advapi = LoadLibraryW(L"advapi32.dll");
+    open_token_t open_token = advapi ? (open_token_t)(void*)GetProcAddress(advapi, "OpenProcessToken") : NULL;
+    lookup_priv_t lookup_priv = advapi ? (lookup_priv_t)(void*)GetProcAddress(advapi, "LookupPrivilegeValueW") : NULL;
+    adjust_priv_t adjust_priv = advapi ? (adjust_priv_t)(void*)GetProcAddress(advapi, "AdjustTokenPrivileges") : NULL;
+    HANDLE token = NULL;
+    TOKEN_PRIVILEGES desired = {0}, previous = {0};
+    DWORD length = sizeof(previous), error = ERROR_CALL_NOT_IMPLEMENTED;
+    void* ret = NULL;
+    if (open_token && lookup_priv && adjust_priv) {
+        desired.PrivilegeCount = 1;
+        desired.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        if (open_token(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)
+            && lookup_priv(NULL, L"SeLockMemoryPrivilege", &desired.Privileges[0].Luid)) {
+            SetLastError(ERROR_SUCCESS);
+            BOOL adjusted = adjust_priv(token, FALSE, &desired, sizeof(previous), &previous, &length);
+            error = GetLastError(); // TRUE with ERROR_NOT_ALL_ASSIGNED is still failure.
+            if (adjusted && error == ERROR_SUCCESS) {
+                ret = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES, PAGE_READWRITE);
+                error = ret ? ERROR_SUCCESS : GetLastError();
+                // Restore the process token; never grant an account right or change system policy.
+                if (previous.PrivilegeCount && !adjust_priv(token, FALSE, &previous, 0, NULL, NULL)) {
+                    rvvm_warn("Failed to restore large-page token privilege: %lu", (unsigned long)GetLastError());
+                }
+            }
+        } else {
+            error = GetLastError();
+        }
+    }
+    if (token) CloseHandle(token);
+    if (advapi) FreeLibrary(advapi);
+    spin_unlock(&large_ram_lock);
+    if (ret) {
+        *page_size = minimum;
+    } else {
+        rvvm_warn("Large-page RAM unavailable: Win32 error %lu; falling back to ordinary pages", (unsigned long)error);
+    }
+    return ret;
+#else
+    UNUSED(size);
+    rvvm_warn("Explicit large-page RAM is only implemented on Windows NT; using ordinary allocation");
+    return NULL;
+#endif
 }
 
 void* vma_mmap(void* addr, size_t size, uint32_t flags, rvfile_t* file, uint64_t offset)

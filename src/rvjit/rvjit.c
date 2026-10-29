@@ -231,6 +231,8 @@ static inline bool rvjit_page_needs_flush(rvjit_block_t* block, rvjit_addr_t add
 void rvjit_block_init(rvjit_block_t* block)
 {
     block->size    = 0;
+    block->retired = 0;
+    block->branches = 0;
     block->linkage = LINKAGE_JMP;
     vector_clear(block->links);
     rvjit_emit_init(block);

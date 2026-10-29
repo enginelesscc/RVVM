@@ -15,6 +15,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "riscv_hart.h"
 #include "riscv_mmu.h"
 #include "riscv_priv.h"
+#include "riscv_pmu.h"
 
 // Precise instruction values for SYSTEM opcode decoding
 #define RISCV_INSN_ECALL  0x00000073UL
@@ -99,14 +100,17 @@ slow_path void riscv_emulate_opc_system(rvvm_hart_t* vm, const uint32_t insn)
                 if (!riscv_interrupts_pending(vm)) {
                     while (atomic_load_uint32_ex(&vm->running, ATOMIC_RELAXED)) {
                         // Stall the hart until an interrupt might need servicing
-                        uint64_t delay = CONDVAR_INFINITE;
+                        uint64_t delay = riscv_pmu_delay_ns(vm);
                         if (vm->csr.ie & (1U << RISCV_INTERRUPT_MTIMER)) {
-                            delay = rvtimecmp_delay_ns(&vm->mtimecmp);
+                            delay = EVAL_MIN(delay, rvtimecmp_delay_ns(&vm->mtimecmp));
                         }
                         if (vm->csr.ie & (1U << RISCV_INTERRUPT_STIMER)) {
                             delay = EVAL_MIN(delay, rvtimecmp_delay_ns(&vm->stimecmp));
                         }
+                        if (riscv_interrupts_pending(vm))
+                            break;
                         condvar_wait_ns(vm->wfi_cond, delay);
+                        riscv_pmu_update(vm);
 
                         // Check timer expiration
                         riscv_hart_check_timer(vm);
