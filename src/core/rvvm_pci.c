@@ -215,6 +215,9 @@ struct rvvm_pci_function {
     uint32_t status;
     uint32_t irq_line;
 
+    // Serializes the INTx level with the interrupt controller line
+    rvvm_lock_t intx_lock;
+
     // Bridge assignment
     uint32_t bridge_io;
     uint32_t bridge_mem;
@@ -280,12 +283,16 @@ static inline rvvm_irq_t pci_func_intx_irq(rvvm_pci_func_t* func)
 // Set INTx IRQ level
 static void pci_func_set_intx(rvvm_pci_func_t* func, bool lvl)
 {
-    if (func->irq_pin && lvl != !!atomic_load_uint32_relax(&func->status)) {
-        atomic_store_uint32_relax(&func->status, lvl ? PCI_CMD_INTX : 0);
-        if (likely(!(atomic_load_uint32_relax(&func->command) & PCI_CMD_INTX_OFF))) {
-            // INTx enabled
-            rvvm_irq_set(func->bus->irq_dev, pci_func_intx_irq(func), lvl);
+    if (func->irq_pin) {
+        rvvm_spin_lock(&func->intx_lock);
+        if (lvl != !!atomic_load_uint32_relax(&func->status)) {
+            atomic_store_uint32_relax(&func->status, lvl ? PCI_CMD_INTX : 0);
+            if (likely(!(atomic_load_uint32_relax(&func->command) & PCI_CMD_INTX_OFF))) {
+                // INTx enabled
+                rvvm_irq_set(func->bus->irq_dev, pci_func_intx_irq(func), lvl);
+            }
         }
+        rvvm_spin_unlock(&func->intx_lock);
     }
 }
 
@@ -598,6 +605,7 @@ static void pci_func_cfg_write(rvvm_pci_func_t* func, size_t reg, uint32_t val)
     }
     switch (reg) {
         case PCI_REG_CMD: {
+            rvvm_spin_lock(&func->intx_lock);
             uint32_t prev = atomic_load_uint32_relax(&func->command);
             atomic_store_uint32_relax(&func->command, val & PCI_CMD_VALID);
             if ((val & ~prev) & PCI_CMD_INTX_OFF) {
@@ -610,6 +618,7 @@ static void pci_func_cfg_write(rvvm_pci_func_t* func, size_t reg, uint32_t val)
                     rvvm_irq_raise(func->bus->irq_dev, pci_func_intx_irq(func));
                 }
             }
+            rvvm_spin_unlock(&func->intx_lock);
             return;
         }
         case PCI_REG_BAR0:
@@ -913,6 +922,9 @@ RVVM_PUBLIC void rvvm_pci_set_irq(rvvm_pci_func_t* func, uint32_t vec, bool lvl)
             // Set INTx IRQ level
             pci_func_set_intx(func, lvl);
         }
+    } else if (func && !lvl) {
+        // INTx is not gated by bus mastering: never leave a deasserted line raised
+        pci_func_set_intx(func, false);
     }
 }
 
