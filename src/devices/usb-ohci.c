@@ -325,6 +325,7 @@ static void frame(usb_ohci_t* hc)
     if ((hc->control & 0xc0) != 0x80 || !hc->hcca) {
         return;
     }
+    store32(hc, hc->hcca + 0x80, hc->frame);
     if (hc->control & 0x10) {
         process_list(hc, hc->control_head);
     }
@@ -334,9 +335,6 @@ static void frame(usb_ohci_t* hc)
     if (hc->control & 4) {
         process_list(hc, load32(hc, hc->hcca + 4 * (hc->frame & 31)));
     }
-    uint8_t number[2];
-    write_uint16_le(number, hc->frame);
-    dma(hc, hc->hcca + 0x80, number, 2, true);
     if (hc->done && !(hc->status & WDH)) {
         store32(hc, hc->hcca + 0x84, hc->done | ((hc->status & hc->enable & ~WDH) ? 1 : 0));
         hc->done    = 0;

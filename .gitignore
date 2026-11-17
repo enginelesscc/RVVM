@@ -60,3 +60,4 @@
 !/tests/tlb-bench.c
 !/tests/run-tlb-bench.py
 !/tests/README-tlb.md
+!/tests/ohci-frame.c
